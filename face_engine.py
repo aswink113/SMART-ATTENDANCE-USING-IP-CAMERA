@@ -231,7 +231,7 @@ class FaceEngine:
 
         return faces
 
-    def recognize_face(self, frame_bgr, face_data, threshold=0.38):
+    def recognize_face(self, frame_bgr, face_data, threshold=0.45):
         """
         Recognizes a detected face against known embeddings using top-k cosine similarity aggregation per employee.
         Returns (emp_id, confidence, bbox) where emp_id is 'Unknown' if below threshold.
