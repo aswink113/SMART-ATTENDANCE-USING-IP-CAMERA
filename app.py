@@ -26,7 +26,7 @@ from database import (
 )
 from face_engine import face_engine
 from camera_stream import camera_stream, CameraStreamManager
-from reports import generate_attendance_excel
+from reports import generate_attendance_excel, generate_attendance_csv
 
 # Initialize database schema
 init_db()
@@ -583,6 +583,15 @@ def api_export_excel():
     end_date = request.args.get('end_date')
     department = request.args.get('department')
     filepath = generate_attendance_excel(start_date=start_date, end_date=end_date, department=department)
+    return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
+
+@app.route('/api/attendance/export/csv')
+@admin_required
+def api_export_csv():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    department = request.args.get('department')
+    filepath = generate_attendance_csv(start_date=start_date, end_date=end_date, department=department)
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
 if __name__ == '__main__':

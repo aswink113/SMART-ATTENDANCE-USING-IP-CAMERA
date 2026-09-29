@@ -102,3 +102,29 @@ def generate_attendance_excel(start_date=None, end_date=None, department=None, e
 
     wb.save(output_path)
     return output_path
+
+def generate_attendance_csv(start_date=None, end_date=None, department=None, emp_id=None, output_path=None):
+    import csv
+    records = get_all_attendance_records(start_date=start_date, end_date=end_date, department=department, emp_id=emp_id)
+    if not output_path:
+        filename = f"Attendance_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        output_path = os.path.join(os.path.dirname(__file__), 'captures', filename)
+
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Record ID", "Employee ID", "Employee Name", "Department", "Date", "Punch IN Time", "Punch OUT Time", "Total Hours", "Status"])
+        for r in records:
+            status_text = r.get('status', 'IN_PROGRESS')
+            status_display = 'Completed (Out)' if status_text == 'COMPLETED' else ('In Office (Active)' if status_text == 'IN_PROGRESS' else status_text)
+            writer.writerow([
+                r['id'],
+                r['emp_id'],
+                r.get('name', ''),
+                r.get('department', ''),
+                r['date'],
+                r['in_time'] or '-',
+                r['out_time'] or '-',
+                f"{r['total_hours']} hrs" if r['total_hours'] else '-',
+                status_display
+            ])
+    return output_path

@@ -35,7 +35,11 @@
                 </button>
                 <a href="{{ url_for('api_export_excel', start_date=start_date, end_date=end_date, department=department) }}" class="btn btn-success">
                     <i data-lucide="file-spreadsheet"></i>
-                    <span>Export Excel Report</span>
+                    <span>Export Excel</span>
+                </a>
+                <a href="{{ url_for('api_export_csv', start_date=start_date, end_date=end_date, department=department) }}" class="btn btn-secondary">
+                    <i data-lucide="download"></i>
+                    <span>Export CSV</span>
                 </a>
                 <button type="button" class="btn btn-primary" onclick="openManualPunchModal()">
                     <i data-lucide="fingerprint"></i>

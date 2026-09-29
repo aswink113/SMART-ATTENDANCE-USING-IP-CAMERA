@@ -185,8 +185,12 @@
             </div>
             <div class="card-header-right">
                 <a href="{{ url_for('api_export_excel') }}" class="btn btn-sm btn-success">
+                    <i data-lucide="file-spreadsheet"></i>
+                    <span>Excel</span>
+                </a>
+                <a href="{{ url_for('api_export_csv') }}" class="btn btn-sm btn-secondary">
                     <i data-lucide="download"></i>
-                    <span>Export Excel</span>
+                    <span>CSV</span>
                 </a>
             </div>
         </div>
