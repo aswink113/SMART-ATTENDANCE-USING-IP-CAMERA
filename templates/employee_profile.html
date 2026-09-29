@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile · NATVISION{% endblock %}
+{% block header_title %}My Profile & Facial Registration{% endblock %}
+
+{% block content %}
+<div class="employee-profile-page">
+    <!-- Profile Top Banner -->
+    <div class="glass-card profile-hero-card">
+        <div class="hero-avatar-wrap">
+            {% if employee and employee.profile_photo %}
+                <img src="/{{ employee.profile_photo }}" alt="{{ employee.name }}" class="profile-hero-img" id="hero-profile-avatar" onclick="previewImage(this.src)">
+            {% elif employee and employee.photos and employee.photos | length > 0 %}
+                <img src="/{{ employee.photos[0] }}" alt="{{ employee.name }}" class="profile-hero-img" id="hero-profile-avatar" onclick="previewImage(this.src)">
+            {% else %}
+                <div class="profile-hero-placeholder">
+                    <span>{{ session.get('name', 'E')[0] | upper }}</span>
+                </div>
+            {% endif %}
+            <button class="avatar-edit-overlay-btn" onclick="openCropDpModal('{{ employee.emp_id if employee else session.get('emp_id') }}', '{{ employee.name if employee else session.get('name') }}', '{{ employee.profile_photo if employee and employee.profile_photo else (employee.photos[0] if employee and employee.photos else '') }}')" title="Crop & Change Profile Picture (DP)">
+                <i data-lucide="crop"></i>
+            </button>
+        </div>
+
+        <div class="hero-info-wrap">
+            <div class="hero-title-row">
+                <h2>{{ employee.name if employee else session.get('name') }}</h2>
+                <span class="emp-badge-id">{{ employee.emp_id if employee else session.get('emp_id') }}</span>
+            </div>
+            <div class="hero-meta-row">
+                <span><i data-lucide="briefcase"></i> {{ employee.department if employee else 'General' }}</span>
+                <span><i data-lucide="mail"></i> {{ employee.email if employee else session.get('email') }}</span>
+                <span><i data-lucide="phone"></i> {{ employee.phone if employee else 'Not provided' }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Grid: Left = Account Settings, Right = Face Photos Management -->
+    <div class="profile-grid mt-4">
+        <!-- Account Details & Password Form -->
+        <div class="glass-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="user-cog" class="icon-accent"></i>
+                    <h4>Account Details & Security</h4>
+                </div>
+            </div>
+
+            <form id="profile-update-form" onsubmit="submitProfileUpdate(event)">
+                <div class="form-group">
+                    <label>Employee ID</label>
+                    <input type="text" class="form-control" value="{{ employee.emp_id if employee else '' }}" disabled readonly>
+                    <small class="form-hint">Managed by your organization administrator.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" class="form-control" value="{{ employee.name if employee else '' }}" disabled readonly>
+                </div>
+
+                <div class="form-group">
+                    <label>Work Email</label>
+                    <input type="email" class="form-control" value="{{ employee.email if employee else '' }}" disabled readonly>
+                </div>
+
+                <div class="form-group">
+                    <label>Department</label>
+                    <input type="text" class="form-control" value="{{ employee.department if employee else '' }}" disabled readonly>
+                </div>
+
+                <div class="form-group">
+                    <label for="prof_phone">Phone Number <span class="required">*</span></label>
+                    <input type="tel" id="prof_phone" name="phone" class="form-control" value="{{ employee.phone if employee else '' }}" required>
+                </div>
+
+                <div class="section-divider my-3"></div>
+
+                <div class="form-group">
+                    <label for="prof_password">Change Password</label>
+                    <div class="password-input-wrap">
+                        <input type="password" id="prof_password" name="new_password" class="form-control" placeholder="Leave empty to keep current password">
+                        <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('prof_password', this)" tabindex="-1" title="Show/Hide password">
+                            <i data-lucide="eye"></i>
+                        </button>
+                    </div>
+                    <small class="form-hint">Must be at least 6 characters.</small>
+                </div>
+
+                <div class="form-actions mt-4">
+                    <button type="submit" class="btn btn-primary btn-block" id="save-prof-btn">
+                        <i data-lucide="save"></i>
+                        <span>Save Account Changes</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 3 Face Reference Photos & Profile Picture Management -->
+        <div class="glass-card" id="face-photos-section">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="camera" class="icon-accent"></i>
+                    <h4>My Facial Photos (3 Samples)</h4>
+                </div>
+                <span class="badge-pill badge-primary">AI Recognition</span>
+            </div>
+
+            <p class="section-subtext">These 3 photos are used by the smart IP camera to recognize your face and record your attendance when you raise your hand.</p>
+
+            <!-- Current Registered Photos Gallery -->
+            <div class="current-photos-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span class="gallery-label">Active Face Models:</span>
+                    {% if employee and employee.photos and employee.photos | length > 0 %}
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="openCropDpModal('{{ employee.emp_id }}', '{{ employee.name }}', '{{ employee.profile_photo or employee.photos[0] }}')">
+                            <i data-lucide="crop"></i>
+                            <span>Crop DP</span>
+                        </button>
+                    {% endif %}
+                </div>
+                <div class="gallery-thumbs mt-2" id="profile-photos-display">
+                    {% if employee and employee.photos and employee.photos | length > 0 %}
+                        {% for p in employee.photos %}
+                            <div class="thumb-with-actions">
+                                <img src="/{{ p }}" alt="Face sample" class="gallery-thumb" onclick="previewImage(this.src)">
+                                <button type="button" class="btn-thumb-set-dp" onclick="openCropDpModal('{{ employee.emp_id }}', '{{ employee.name }}', '{{ p }}')" title="Crop & Set as Profile Picture">
+                                    <i data-lucide="crop"></i>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state-pills">
+                            <i data-lucide="alert-circle"></i>
+                            <span>No face photos registered yet. Please upload 3 photos below.</span>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Upload / Snap New Photos Form -->
+            <div class="photo-upload-section mt-4">
+                <div class="section-title-wrap">
+                    <i data-lucide="refresh-cw" class="icon-accent"></i>
+                    <h4>Update / Replace Face Photos</h4>
+                </div>
+
+                <!-- Tabs: File Upload vs Webcam Snap -->
+                <div class="photo-source-tabs mt-2">
+                    <button type="button" class="photo-tab active" id="tab-file-upload" onclick="switchPhotoSource('file')">
+                        <i data-lucide="upload-cloud"></i>
+                        <span>Upload 3 Photos</span>
+                    </button>
+                    <button type="button" class="photo-tab" id="tab-webcam-snap" onclick="switchPhotoSource('webcam')">
+                        <i data-lucide="camera"></i>
+                        <span>Snap from Webcam</span>
+                    </button>
+                </div>
+
+                <form id="photos-upload-form" onsubmit="submitPhotosUpdate(event)">
+                    <!-- File Upload Mode -->
+                    <div id="file-upload-mode" class="photo-mode-container">
+                        <div class="file-drop-zone" onclick="document.getElementById('prof-photo-input').click()">
+                            <i data-lucide="image-plus"></i>
+                            <span>Click or drag 3 face photos here</span>
+                            <small>JPG, PNG (Frontal, slight angles recommended)</small>
+                            <input type="file" id="prof-photo-input" name="photos" multiple accept="image/*" style="display:none;" onchange="handleFileSelect(event)">
+                        </div>
+                        <div class="selected-files-preview" id="file-preview-grid"></div>
+                    </div>
+
+                    <!-- Webcam Snap Mode -->
+                    <div id="webcam-snap-mode" class="photo-mode-container" style="display:none;">
+                        <div class="webcam-capture-wrapper">
+                            <div class="webcam-video-box">
+                                <video id="webcam-video" autoplay playsinline muted></video>
+                                <button type="button" class="btn btn-accent btn-snap" onclick="captureSnapshot()">
+                                    <i data-lucide="camera"></i>
+                                    <span>Take Photo <span id="snap-counter-badge">1</span>/3</span>
+                                </button>
+                            </div>
+
+                            <div class="webcam-snapped-grid">
+                                <div class="snap-slot" id="slot-1">
+                                    <span class="slot-label">Photo 1 (Front)</span>
+                                    <img id="snap-img-1" class="snap-img" src="" style="display:none;">
+                                    <input type="hidden" name="webcam_photo_1" id="hidden_photo_1">
+                                </div>
+                                <div class="snap-slot" id="slot-2">
+                                    <span class="slot-label">Photo 2 (Slight Left)</span>
+                                    <img id="snap-img-2" class="snap-img" src="" style="display:none;">
+                                    <input type="hidden" name="webcam_photo_2" id="hidden_photo_2">
+                                </div>
+                                <div class="snap-slot" id="slot-3">
+                                    <span class="slot-label">Photo 3 (Slight Right)</span>
+                                    <img id="snap-img-3" class="snap-img" src="" style="display:none;">
+                                    <input type="hidden" name="webcam_photo_3" id="hidden_photo_3">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions mt-3">
+                        <button type="submit" class="btn btn-success btn-block" id="upload-photos-btn">
+                            <i data-lucide="upload"></i>
+                            <span>Update Photos & Retrain AI</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Interactive Profile Picture (DP) Image Cropper -->
+<div id="crop-dp-modal" class="modal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="crop" class="icon-accent"></i>
+                <h3>Crop & Set Profile Picture: <span id="cropper-emp-title" class="text-primary"></span></h3>
+            </div>
+            <span class="modal-close" onclick="closeCropDpModal()">&times;</span>
+        </div>
+
+        <div class="modal-body">
+            <!-- Source Selector: Choose from registered photos or upload new -->
+            <div class="cropper-source-bar mb-3">
+                <div class="source-bar-left">
+                    <span class="gallery-label">Pick Photo to Crop:</span>
+                    <div class="cropper-sample-thumbs" id="cropper-sample-thumbs"></div>
+                </div>
+                <div class="source-bar-right">
+                    <label class="btn btn-sm btn-secondary" for="cropper-custom-file-input">
+                        <i data-lucide="upload"></i>
+                        <span>Upload New Image</span>
+                    </label>
+                    <input type="file" id="cropper-custom-file-input" accept="image/*" style="display:none;" onchange="handleCropperCustomFile(event)">
+                </div>
+            </div>
+
+            <!-- Cropper Workspace Area -->
+            <div class="cropper-workspace-grid">
+                <div class="cropper-canvas-wrap">
+                    <img id="cropper-target-img" src="" alt="Image to Crop" style="max-width:100%; display:block;">
+                </div>
+
+                <div class="cropper-preview-sidebar">
+                    <span class="gallery-label">Circular Avatar Preview:</span>
+                    <div class="dp-circle-preview-box">
+                        <div class="cropper-preview-container preview-circle"></div>
+                    </div>
+
+                    <span class="gallery-label mt-3">Square Preview:</span>
+                    <div class="dp-square-preview-box">
+                        <div class="cropper-preview-container preview-square"></div>
+                    </div>
+
+                    <!-- Cropper Controls -->
+                    <div class="cropper-toolbar-controls mt-3">
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperZoom(0.1)" title="Zoom In">
+                            <i data-lucide="zoom-in"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperZoom(-0.1)" title="Zoom Out">
+                            <i data-lucide="zoom-out"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperRotate(-90)" title="Rotate Left">
+                            <i data-lucide="rotate-ccw"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperRotate(90)" title="Rotate Right">
+                            <i data-lucide="rotate-cw"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperReset()" title="Reset">
+                            <i data-lucide="refresh-cw"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeCropDpModal()">Cancel</button>
+            <button type="button" class="btn btn-success btn-lg" id="btn-save-crop-dp" onclick="saveCroppedDp()">
+                <i data-lucide="check"></i>
+                <span>Save & Set as Profile Picture (DP)</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div id="image-modal" class="modal">
+    <div class="modal-content modal-img-box">
+        <span class="modal-close" onclick="closeImageModal()">&times;</span>
+        <img id="modal-preview-img" src="" alt="Preview">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script>
+    function scrollToPhotoSection() {
+        document.getElementById('face-photos-section').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    async function submitProfileUpdate(e) {
+        e.preventDefault();
+        const form = document.getElementById('profile-update-form');
+        const formData = new FormData(form);
+        const saveBtn = document.getElementById('save-prof-btn');
+
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Saving Changes...</span>';
+        if (window.lucide) lucide.createIcons();
+
+        try {
+            const res = await fetch('/api/employee/profile/update', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('✅ Profile updated successfully!', 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (err) {
+            alert('Failed to update profile: ' + err.message);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i data-lucide="save"></i><span>Save Account Changes</span>';
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+
+    async function submitPhotosUpdate(e) {
+        e.preventDefault();
+        const form = document.getElementById('photos-upload-form');
+        const formData = new FormData(form);
+        const uploadBtn = document.getElementById('upload-photos-btn');
+
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Processing & Retraining AI Model...</span>';
+        if (window.lucide) lucide.createIcons();
+
+        try {
+            const res = await fetch('/api/employee/photos/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('🎉 ' + data.message, 'success');
+                setTimeout(() => window.location.reload(), 1200);
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (err) {
+            alert('Failed to upload photos: ' + err.message);
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i data-lucide="upload"></i><span>Update Photos & Retrain AI</span>';
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+
+    function previewImage(src) {
+        const modal = document.getElementById('image-modal');
+        const img = document.getElementById('modal-preview-img');
+        img.src = src;
+        modal.classList.add('show');
+    }
+    function closeImageModal() {
+        document.getElementById('image-modal').classList.remove('show');
+    }
+</script>
+{% endblock %}

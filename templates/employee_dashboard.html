@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}My Attendance · NATVISION{% endblock %}
+{% block header_title %}My Attendance & Daily Records{% endblock %}
+
+{% block content %}
+<div class="employee-portal-page">
+    <!-- Top Welcome Banner -->
+    <div class="glass-card welcome-banner">
+        <div class="welcome-left">
+            <div class="welcome-avatar">
+                {% if employee and employee.profile_photo %}
+                    <img src="/{{ employee.profile_photo }}" alt="{{ employee.name }}" class="emp-portal-avatar" onclick="previewImage(this.src)">
+                {% elif employee and employee.photos and employee.photos | length > 0 %}
+                    <img src="/{{ employee.photos[0] }}" alt="{{ employee.name }}" class="emp-portal-avatar" onclick="previewImage(this.src)">
+                {% else %}
+                    <div class="avatar-placeholder">
+                        <span>{{ session.get('name', 'E')[0] | upper }}</span>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="welcome-text">
+                <h2>Welcome back, {{ session.get('name') }}!</h2>
+                <div class="emp-meta-tags">
+                    <span class="meta-tag"><i data-lucide="badge-check"></i> ID: <strong>{{ session.get('emp_id') }}</strong></span>
+                    <span class="meta-tag"><i data-lucide="briefcase"></i> {{ employee.department if employee else 'General' }}</span>
+                    <span class="meta-tag"><i data-lucide="mail"></i> {{ session.get('email') }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="welcome-right">
+            <div class="portal-date-box">
+                <span class="date-label">Today's Date</span>
+                <strong class="date-val" id="portal-current-date">--</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 1: Today's Punch Status & Summary Metric Cards -->
+    <div class="emp-dashboard-grid mt-2">
+        <!-- Today's Punch Card -->
+        <div class="glass-card today-punch-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="clock-3" class="icon-accent"></i>
+                    <h4>Today's Punch Status</h4>
+                </div>
+                {% if today_record %}
+                    {% if today_record.status == 'COMPLETED' %}
+                        <span class="badge-status badge-success">Completed (Checked Out)</span>
+                    {% else %}
+                        <span class="badge-status badge-warning">Currently In Office</span>
+                    {% endif %}
+                {% else %}
+                    <span class="badge-status badge-secondary">Not Punched In Yet</span>
+                {% endif %}
+            </div>
+
+            <div class="punch-timeline">
+                <div class="timeline-step {% if today_record and today_record.in_time %}step-done{% endif %}">
+                    <div class="step-icon">
+                        <i data-lucide="log-in"></i>
+                    </div>
+                    <div class="step-info">
+                        <span class="step-title">Punch IN</span>
+                        <strong class="step-time">{{ today_record.in_time if today_record and today_record.in_time else '--:--:--' }}</strong>
+                    </div>
+                    {% if today_record and today_record.in_snapshot %}
+                        <img src="/{{ today_record.in_snapshot }}" alt="IN" class="timeline-thumb" onclick="previewImage(this.src)">
+                    {% endif %}
+                </div>
+
+                <div class="timeline-connector"></div>
+
+                <div class="timeline-step {% if today_record and today_record.out_time %}step-done{% endif %}">
+                    <div class="step-icon">
+                        <i data-lucide="log-out"></i>
+                    </div>
+                    <div class="step-info">
+                        <span class="step-title">Punch OUT</span>
+                        <strong class="step-time">{{ today_record.out_time if today_record and today_record.out_time else '--:--:--' }}</strong>
+                    </div>
+                    {% if today_record and today_record.out_snapshot %}
+                        <img src="/{{ today_record.out_snapshot }}" alt="OUT" class="timeline-thumb" onclick="previewImage(this.src)">
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="punch-card-footer">
+                <div class="work-duration-box">
+                    <span>Today's Total Hours:</span>
+                    <strong>{{ today_record.total_hours if today_record and today_record.total_hours else '0.0' }} hrs</strong>
+                </div>
+                <div class="gesture-hint">
+                    <i data-lucide="hand"></i>
+                    <span>Raise hand in front of camera to punch</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary KPIs -->
+        <div class="glass-card emp-kpi-card">
+            <div class="kpi-item">
+                <div class="kpi-icon icon-blue">
+                    <i data-lucide="calendar-days"></i>
+                </div>
+                <div class="kpi-details">
+                    <span class="kpi-title">Total Days Logged</span>
+                    <h3 class="kpi-num">{{ total_days }} Days</h3>
+                </div>
+            </div>
+
+            <div class="kpi-item">
+                <div class="kpi-icon icon-emerald">
+                    <i data-lucide="hourglass"></i>
+                </div>
+                <div class="kpi-details">
+                    <span class="kpi-title">Total Hours Worked</span>
+                    <h3 class="kpi-num">{{ total_hours }} hrs</h3>
+                </div>
+            </div>
+
+            <div class="kpi-item">
+                <div class="kpi-icon icon-purple">
+                    <i data-lucide="gauge"></i>
+                </div>
+                <div class="kpi-details">
+                    <span class="kpi-title">Average Daily Hours</span>
+                    <h3 class="kpi-num">{{ avg_hours }} hrs/day</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 2: Day-by-Day Attendance History Table -->
+    <div class="glass-card table-card mt-2">
+        <div class="card-header">
+            <div class="card-header-left">
+                <i data-lucide="calendar-range" class="icon-accent"></i>
+                <h4>My Day-by-Day Attendance History</h4>
+            </div>
+            <span class="badge-pill badge-outline">{{ history | length }} Days Logged</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Punch IN</th>
+                        <th>Punch OUT</th>
+                        <th>Duration (Hours)</th>
+                        <th>Status</th>
+                        <th>Face Verification</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if history %}
+                        {% for r in history %}
+                            <tr>
+                                <td>
+                                    <span class="font-mono font-bold">{{ r.date }}</span>
+                                </td>
+                                <td>
+                                    <span class="time-badge in-time">
+                                        <i data-lucide="log-in"></i>
+                                        {{ r.in_time or '--:--:--' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="time-badge out-time">
+                                        <i data-lucide="log-out"></i>
+                                        {{ r.out_time or '--:--:--' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <strong>{{ r.total_hours }} hrs</strong>
+                                </td>
+                                <td>
+                                    {% if r.status == 'COMPLETED' %}
+                                        <span class="badge-status badge-success">Completed</span>
+                                    {% elif r.status == 'IN_PROGRESS' %}
+                                        <span class="badge-status badge-warning">In Office</span>
+                                    {% else %}
+                                        <span class="badge-status badge-secondary">{{ r.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="snap-thumbs">
+                                        {% if r.in_snapshot %}
+                                            <img src="/{{ r.in_snapshot }}" alt="IN" class="table-thumb" title="Punch IN Photo" onclick="previewImage(this.src)">
+                                        {% endif %}
+                                        {% if r.out_snapshot %}
+                                            <img src="/{{ r.out_snapshot }}" alt="OUT" class="table-thumb" title="Punch OUT Photo" onclick="previewImage(this.src)">
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5 text-muted">
+                                <i data-lucide="calendar-x" class="empty-table-icon"></i>
+                                <p class="mt-2">No past attendance records found.</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Registered Reference Photos Card -->
+    {% if employee and employee.photos %}
+        <div class="glass-card mt-4">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="images" class="icon-accent"></i>
+                    <h4>My Registered Reference Face Photos (3 Samples)</h4>
+                </div>
+            </div>
+            <div class="emp-registered-photos-grid">
+                {% for p in employee.photos %}
+                    <div class="reg-photo-item">
+                        <img src="/{{ p }}" alt="Registered Sample" onclick="previewImage(this.src)">
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Image Modal -->
+<div id="image-modal" class="modal">
+    <div class="modal-content modal-img-box">
+        <span class="modal-close" onclick="closeImageModal()">&times;</span>
+        <img id="modal-preview-img" src="" alt="Preview">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.getElementById('portal-current-date').textContent = new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+
+    function previewImage(src) {
+        const modal = document.getElementById('image-modal');
+        const img = document.getElementById('modal-preview-img');
+        img.src = src;
+        modal.classList.add('show');
+    }
+    function closeImageModal() {
+        document.getElementById('image-modal').classList.remove('show');
+    }
+</script>
+{% endblock %}

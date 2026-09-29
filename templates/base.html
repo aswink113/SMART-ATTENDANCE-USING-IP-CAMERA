@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NATVISION{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/natvision.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=natvision-light-2">
+</head>
+<body class="theme-light">
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="{{ url_for('index') }}" class="logo-box" title="NATVISION">
+                    <img src="{{ url_for('static', filename='img/natvision.png') }}" alt="NATVISION" class="brand-logo">
+                </a>
+            </div>
+
+            <nav class="sidebar-nav">
+                {% if session.get('role') == 'admin' %}
+                    <div class="nav-section-title">Workspace</div>
+                    <a href="{{ url_for('admin_dashboard') }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
+                        <i data-lucide="layout-dashboard"></i>
+                        <span>Live Monitor</span>
+                    </a>
+                    <a href="{{ url_for('admin_employees') }}" class="nav-link {% if active_page == 'employees' %}active{% endif %}">
+                        <i data-lucide="users"></i>
+                        <span>Employees</span>
+                    </a>
+                    <a href="{{ url_for('admin_attendance') }}" class="nav-link {% if active_page == 'attendance' %}active{% endif %}">
+                        <i data-lucide="clipboard-check"></i>
+                        <span>Attendance Logs</span>
+                    </a>
+                    <a href="{{ url_for('admin_camera') }}" class="nav-link {% if active_page == 'camera' %}active{% endif %}">
+                        <i data-lucide="video"></i>
+                        <span>Camera Settings</span>
+                    </a>
+                {% elif session.get('role') == 'employee' %}
+                    <div class="nav-section-title">My workspace</div>
+                    <a href="{{ url_for('employee_dashboard') }}" class="nav-link {% if active_page == 'attendance' %}active{% endif %}">
+                        <i data-lucide="user-check"></i>
+                        <span>My Attendance</span>
+                    </a>
+                    <a href="{{ url_for('employee_profile') }}" class="nav-link {% if active_page == 'profile' %}active{% endif %}">
+                        <i data-lucide="user-cog"></i>
+                        <span>My Profile</span>
+                    </a>
+                {% endif %}
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile-badge">
+                    <div class="user-avatar">
+                        <i data-lucide="{% if session.get('role') == 'admin' %}shield-check{% else %}user{% endif %}"></i>
+                    </div>
+                    <div class="user-details">
+                        <span class="user-name">{{ session.get('name') or session.get('username') or 'User' }}</span>
+                        <span class="user-role badge-pill">{{ session.get('role') | upper }}</span>
+                    </div>
+                </div>
+                <a href="{{ url_for('logout') }}" class="logout-btn" title="Sign Out">
+                    <i data-lucide="log-out"></i>
+                </a>
+            </div>
+        </aside>
+
+        <main class="main-wrapper">
+            <header class="top-navbar">
+                <div class="navbar-left">
+                    <button id="sidebar-toggle" class="btn-icon" type="button" aria-label="Toggle navigation">
+                        <i data-lucide="menu"></i>
+                    </button>
+                    <div class="page-title-box">
+                        <p class="eyebrow">NATVISION</p>
+                        <h2>{% block header_title %}Dashboard{% endblock %}</h2>
+                    </div>
+                </div>
+
+                <div class="navbar-right">
+                    <div class="status-indicator-pill">
+                        <span class="pulse-dot"></span>
+                        <span id="camera-status-text">AI Camera Online</span>
+                    </div>
+                    <div class="gesture-pill">
+                        <i data-lucide="hand"></i>
+                        <span>Raise hand to punch</span>
+                    </div>
+                    <div class="clock-pill">
+                        <i data-lucide="clock-3"></i>
+                        <span class="system-time" id="live-clock">--:--:--</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="flash-messages-container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">
+                                <i data-lucide="{% if category == 'danger' %}alert-circle{% elif category == 'success' %}check-circle{% else %}info{% endif %}"></i>
+                                <span>{{ message }}</span>
+                                <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <div class="content-body">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <audio id="punch-audio-in" preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="punch-audio-out" preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/2874/2874-preview.mp3" type="audio/mpeg">
+    </audio>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_scripts %}{% endblock %}
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

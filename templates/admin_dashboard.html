@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+
+{% block title %}Live Monitor · NATVISION{% endblock %}
+{% block header_title %}Live attendance monitor{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid">
+    <!-- Row 1: KPI Stat Cards -->
+    <div class="stats-cards-grid">
+        <div class="glass-card stat-card stat-primary">
+            <div class="stat-icon-wrap">
+                <i data-lucide="users"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Total Employees</span>
+                <h3 class="stat-value" id="stat-total">{{ stats.total_employees }}</h3>
+                <span class="stat-subtext">Registered in system</span>
+            </div>
+        </div>
+
+        <div class="glass-card stat-card stat-success">
+            <div class="stat-icon-wrap">
+                <i data-lucide="user-check"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Present Today</span>
+                <h3 class="stat-value" id="stat-present">{{ stats.present_today }}</h3>
+                <span class="stat-subtext">{{ stats.attendance_rate }}% Attendance Rate</span>
+            </div>
+        </div>
+
+        <div class="glass-card stat-card stat-warning">
+            <div class="stat-icon-wrap">
+                <i data-lucide="building"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Currently In Office</span>
+                <h3 class="stat-value" id="stat-in">{{ stats.currently_in }}</h3>
+                <span class="stat-subtext">Active IN sessions</span>
+            </div>
+        </div>
+
+        <div class="glass-card stat-card stat-info">
+            <div class="stat-icon-wrap">
+                <i data-lucide="log-out"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Punched Out</span>
+                <h3 class="stat-value" id="stat-out">{{ stats.punched_out }}</h3>
+                <span class="stat-subtext">Completed work day</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 2: Live Video Stream & Real-Time Punch Ticker -->
+    <div class="monitor-feed-section">
+        <!-- Live Camera Stream Card -->
+        <div class="glass-card stream-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <div class="live-tag">
+                        <span class="live-dot"></span>
+                        <span>LIVE STREAM</span>
+                    </div>
+                    <h4>AI Video Feed (Face Recognition & Hand Gesture)</h4>
+                </div>
+                <div class="card-header-right">
+                    <!-- Browser WebCam Toggle Button -->
+                    <button class="btn btn-sm btn-accent" id="btn-browser-cam" onclick="toggleBrowserWebcamStream()" title="Stream camera from this browser device">
+                        <i data-lucide="camera" id="browser-cam-icon"></i>
+                        <span id="browser-cam-text">Use Browser Camera</span>
+                    </button>
+                    <span class="badge-pill badge-outline" id="camera-fps-badge">FPS: --</span>
+                    <button class="btn btn-sm btn-secondary" onclick="reloadStream()" title="Reload Stream">
+                        <i data-lucide="refresh-cw"></i>
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="toggleFullScreen('stream-container')" title="Full Screen">
+                        <i data-lucide="maximize"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="stream-container" id="stream-container">
+                <img src="{{ url_for('video_feed') }}" id="live-camera-img" alt="Live Camera Feed" class="stream-img">
+                
+                <!-- Hidden Client Video & Canvas for Browser Streaming -->
+                <video id="client-stream-video" autoplay playsinline muted style="display:none;"></video>
+                <canvas id="client-stream-canvas" style="display:none;"></canvas>
+
+                <!-- Overlay HUD instructions -->
+                <div class="stream-hud-overlay">
+                    <div class="hud-item hud-gesture">
+                        <i data-lucide="hand"></i>
+                        <span>Raise Hand To Punch IN / OUT</span>
+                    </div>
+                    <div class="hud-item hud-rule">
+                        <i data-lucide="timer"></i>
+                        <span>5-Min Punch Cooldown Active</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stream-footer">
+                <div class="stream-info-pill">
+                    <i data-lucide="cctv"></i>
+                    <span id="active-source-label">Source: <strong>{{ settings.camera_source_str or 'Webcam / RTSP' }}</strong></span>
+                </div>
+                <div class="stream-actions">
+                    <a href="{{ url_for('admin_camera') }}" class="btn btn-sm btn-secondary">
+                        <i data-lucide="settings"></i>
+                        <span>Configure Camera / RTSP</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Helpful notice for camera privacy or physical shutter -->
+            <div class="camera-hint-banner mt-2">
+                <i data-lucide="info"></i>
+                <span>Tip: If your camera displays a gray lock screen, make sure your laptop's <strong>physical camera shutter is open</strong> and Windows Camera Privacy is allowed, or click <strong>"Use Browser Camera"</strong> above!</span>
+            </div>
+        </div>
+
+        <!-- Real-Time Activity Feed Card -->
+        <div class="glass-card activity-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="zap" class="icon-accent"></i>
+                    <h4>Recent Punch Activity</h4>
+                </div>
+                <span class="badge-pill badge-primary">Auto-Sync</span>
+            </div>
+
+            <div class="activity-feed-list" id="activity-feed-list">
+                {% if recent_punches %}
+                    {% for punch in recent_punches %}
+                        <div class="feed-item">
+                            <div class="feed-badge feed-badge-{{ punch.punch_type | lower }}">
+                                {% if punch.punch_type == 'IN' %}
+                                    <i data-lucide="log-in"></i>
+                                {% elif punch.punch_type == 'OUT' %}
+                                    <i data-lucide="log-out"></i>
+                                {% else %}
+                                    <i data-lucide="clock"></i>
+                                {% endif %}
+                            </div>
+                            <div class="feed-content">
+                                <div class="feed-top">
+                                    <strong>{{ punch.name }}</strong>
+                                    <span class="feed-time">{{ punch.timestamp.split(' ')[1] if ' ' in punch.timestamp else punch.timestamp }}</span>
+                                </div>
+                                <div class="feed-bottom">
+                                    <span class="badge-pill {% if punch.punch_type == 'IN' %}badge-success{% elif punch.punch_type == 'OUT' %}badge-info{% else %}badge-warning{% endif %}">
+                                        {{ punch.punch_type }}
+                                    </span>
+                                    <span class="feed-dept">{{ punch.department }}</span>
+                                    {% if punch.confidence %}
+                                        <span class="feed-conf">{{ (punch.confidence * 100) | round(1) }}% match</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% if punch.snapshot_path %}
+                                <div class="feed-thumb-wrap">
+                                    <img src="/{{ punch.snapshot_path }}" alt="Snap" class="feed-thumb" onclick="previewImage(this.src)">
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state-card">
+                        <i data-lucide="clock-alert"></i>
+                        <p>No punches recorded yet today.</p>
+                        <span>Stand in front of the camera and raise your hand!</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 3: Today's Detailed Attendance Log -->
+    <div class="glass-card table-card">
+        <div class="card-header">
+            <div class="card-header-left">
+                <i data-lucide="calendar-check" class="icon-accent"></i>
+                <h4>Today's Attendance Master Log ({{ today_records | length }} records)</h4>
+            </div>
+            <div class="card-header-right">
+                <a href="{{ url_for('api_export_excel') }}" class="btn btn-sm btn-success">
+                    <i data-lucide="download"></i>
+                    <span>Export Excel</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Date</th>
+                        <th>Punch IN Time</th>
+                        <th>Punch OUT Time</th>
+                        <th>Total Hours</th>
+                        <th>Status</th>
+                        <th>Snapshots</th>
+                    </tr>
+                </thead>
+                <tbody id="today-attendance-tbody">
+                    {% if today_records %}
+                        {% for r in today_records %}
+                            <tr>
+                                <td>
+                                    <div class="employee-cell">
+                                        <div class="cell-avatar">
+                                            <span>{{ r.name[0] | upper }}</span>
+                                        </div>
+                                        <div class="cell-text">
+                                            <strong>{{ r.name }}</strong>
+                                            <span class="emp-code">{{ r.emp_id }}</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="dept-badge">{{ r.department }}</span></td>
+                                <td>{{ r.date }}</td>
+                                <td>
+                                    <span class="time-badge in-time">
+                                        <i data-lucide="log-in"></i>
+                                        {{ r.in_time or '--:--:--' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="time-badge out-time">
+                                        <i data-lucide="log-out"></i>
+                                        {{ r.out_time or '--:--:--' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <strong>{{ r.total_hours }} hrs</strong>
+                                </td>
+                                <td>
+                                    {% if r.status == 'COMPLETED' %}
+                                        <span class="badge-status badge-success">Completed (Out)</span>
+                                    {% elif r.status == 'IN_PROGRESS' %}
+                                        <span class="badge-status badge-warning">In Office</span>
+                                    {% else %}
+                                        <span class="badge-status badge-secondary">{{ r.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="snap-thumbs">
+                                        {% if r.in_snapshot %}
+                                            <img src="/{{ r.in_snapshot }}" alt="IN" class="table-thumb" title="IN Snapshot" onclick="previewImage(this.src)">
+                                        {% endif %}
+                                        {% if r.out_snapshot %}
+                                            <img src="/{{ r.out_snapshot }}" alt="OUT" class="table-thumb" title="OUT Snapshot" onclick="previewImage(this.src)">
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4 text-muted">
+                                No attendance entries recorded for today yet.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="glass-card machine-analytics-section">
+        <div class="card-header">
+            <div class="card-header-left">
+                <i data-lucide="cpu" class="icon-accent"></i>
+                <h4>Machine Camera Pass-Through & Detailed Analytics</h4>
+            </div>
+            <span class="badge-pill badge-primary">Real-Time Sensor & AI Feed</span>
+        </div>
+
+        <div class="machine-stats-grid">
+            <div class="glass-card mini-stat stat-primary">
+                <span class="stat-label">Passed the camera</span>
+                <h3 class="stat-value">{{ machine_analytics.total_passed_today }}</h3>
+                <span class="stat-subtext">People detected today</span>
+            </div>
+            <div class="glass-card mini-stat stat-warning">
+                <span class="stat-label">Longer dwell</span>
+                <h3 class="stat-value">{{ machine_analytics.high_dwell_count }}</h3>
+                <span class="stat-subtext">Stayed in frame over 5 seconds</span>
+            </div>
+            <div class="glass-card mini-stat stat-success">
+                <span class="stat-label">Average dwell</span>
+                <h3 class="stat-value">{{ machine_analytics.avg_dwell_sec }}s</h3>
+                <span class="stat-subtext">Average presence duration</span>
+            </div>
+            <div class="glass-card mini-stat stat-info">
+                <span class="stat-label">Peak hour</span>
+                <h4 class="stat-value">{{ machine_analytics.peak_hour }}</h4>
+                <span class="stat-subtext">Highest crowd traffic</span>
+            </div>
+            <div class="glass-card mini-stat">
+                <span class="stat-label">Quiet hour</span>
+                <h4 class="stat-value">{{ machine_analytics.low_hour }}</h4>
+                <span class="stat-subtext">Lowest crowd traffic</span>
+            </div>
+        </div>
+
+        <div class="analytics-charts-grid mt-3">
+            <div class="glass-card chart-panel">
+                <h5>
+                    <i data-lucide="bar-chart-2"></i>
+                    Hourly traffic
+                </h5>
+                <div class="chart-canvas-wrap">
+                    <canvas id="hourlyTrafficChart"></canvas>
+                </div>
+            </div>
+            <div class="glass-card chart-panel">
+                <h5>
+                    <i data-lucide="palette"></i>
+                    Apparel colors
+                </h5>
+                <div class="chart-canvas-wrap">
+                    <canvas id="apparelColorChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Preview Modal -->
+<div id="image-modal" class="modal">
+    <div class="modal-content modal-img-box">
+        <span class="modal-close" onclick="closeImageModal()">&times;</span>
+        <img id="modal-preview-img" src="" alt="Snapshot Preview">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let browserStreamInterval = null;
+    let browserMediaStream = null;
+    let isBrowserStreaming = false;
+
+    async function toggleBrowserWebcamStream() {
+        const btn = document.getElementById('btn-browser-cam');
+        const btnText = document.getElementById('browser-cam-text');
+        const video = document.getElementById('client-stream-video');
+        const canvas = document.getElementById('client-stream-canvas');
+        const activeLabel = document.getElementById('active-source-label');
+
+        if (!isBrowserStreaming) {
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    alert('🔒 Camera Access Blocked by Browser:\n\nChrome & Edge disable camera permissions over local network IP (http://192.168.x.x).\n\n👉 Solution: Open http://localhost:5000 or http://127.0.0.1:5000 in your browser to immediately enable camera access!');
+                    return;
+                }
+
+                // 1. Tell backend to release hardware camera so browser can acquire it without lock conflicts
+                try {
+                    await fetch('/api/camera/mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'browser' })
+                    });
+                    // Brief delay to let Windows release device lock
+                    await new Promise(r => setTimeout(r, 400));
+                } catch(e) {}
+
+                browserMediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, frameRate: { ideal: 15 } }
+                });
+                video.srcObject = browserMediaStream;
+                video.play();
+
+                isBrowserStreaming = true;
+                btnText.textContent = "Stop Browser Camera";
+                btn.classList.remove('btn-accent');
+                btn.classList.add('btn-danger-outline');
+                if (activeLabel) activeLabel.innerHTML = 'Source: <strong>Browser Live Webcam</strong>';
+
+                canvas.width = 640;
+                canvas.height = 480;
+                const ctx = canvas.getContext('2d');
+                let isSendingFrame = false;
+
+                // Stream frames to server AI at high speed without congesting the network
+                browserStreamInterval = setInterval(async () => {
+                    if (!isBrowserStreaming || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+                    if (isSendingFrame) return;
+                    isSendingFrame = true;
+
+                    try {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const b64 = canvas.toDataURL('image/jpeg', 0.65);
+                        await fetch('/api/camera/stream_frame', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image: b64 })
+                        });
+                    } catch (e) {
+                    } finally {
+                        isSendingFrame = false;
+                    }
+                }, 45);
+
+                showToast("✅ Browser WebCam Connected to AI Attendance Engine!", "success");
+            } catch (err) {
+                // If failed, restore server camera mode
+                try {
+                    await fetch('/api/camera/mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'server' })
+                    });
+                } catch (e) {}
+                alert("Could not access browser webcam: " + err.message + "\nPlease check browser camera permissions in your address bar.");
+            }
+        } else {
+            // Stop streaming
+            if (browserStreamInterval) clearInterval(browserStreamInterval);
+            if (browserMediaStream) {
+                browserMediaStream.getTracks().forEach(t => t.stop());
+                browserMediaStream = null;
+            }
+            isBrowserStreaming = false;
+            btnText.textContent = "Use Browser Camera";
+            btn.classList.remove('btn-danger-outline');
+            btn.classList.add('btn-accent');
+            if (activeLabel) activeLabel.innerHTML = 'Source: <strong>Server Webcam / RTSP</strong>';
+
+            // Resume server hardware capture
+            try {
+                await fetch('/api/camera/mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'server' })
+                });
+            } catch (e) {}
+
+            showToast("Switched back to Server Camera feed.", "info");
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function reloadStream() {
+        const img = document.getElementById('live-camera-img');
+        if (img) {
+            img.src = "{{ url_for('video_feed') }}?t=" + new Date().getTime();
+        }
+    }
+
+    function toggleFullScreen(elemId) {
+        const elem = document.getElementById(elemId);
+        if (!document.fullscreenElement) {
+            elem.requestFullscreen().catch(err => {
+                alert(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }
+
+    function previewImage(src) {
+        const modal = document.getElementById('image-modal');
+        const img = document.getElementById('modal-preview-img');
+        img.src = src;
+        modal.classList.add('show');
+    }
+
+    function closeImageModal() {
+        document.getElementById('image-modal').classList.remove('show');
+    }
+
+    // Initialize Machine Passage Analytics Charts
+    document.addEventListener('DOMContentLoaded', function() {
+        // 1. Hourly Traffic Peak/Low Bar Chart
+        const hourlyCtx = document.getElementById('hourlyTrafficChart');
+        if (hourlyCtx) {
+            const hourlyLabels = {{ machine_analytics.hourly_chart_labels | tojson }};
+            const hourlyData = {{ machine_analytics.hourly_chart_data | tojson }};
+            new Chart(hourlyCtx, {
+                type: 'bar',
+                data: {
+                    labels: hourlyLabels,
+                    datasets: [{
+                        label: 'Passes',
+                        data: hourlyData,
+                        backgroundColor: 'rgba(109, 40, 217, 0.72)',
+                        borderColor: '#6d28d9',
+                        borderWidth: 1.5,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(76,29,149,0.06)' }, ticks: { color: '#5c5670', font: { size: 11 } } },
+                        y: { grid: { color: 'rgba(76,29,149,0.06)' }, ticks: { color: '#5c5670', precision: 0 } }
+                    }
+                }
+            });
+        }
+
+        // 2. Apparel & Dress Colors Doughnut Chart
+        const colorCtx = document.getElementById('apparelColorChart');
+        if (colorCtx) {
+            const colorLabels = {{ machine_analytics.color_labels | tojson }};
+            const colorCounts = {{ machine_analytics.color_counts | tojson }};
+            const colorPalette = {
+                'Blue': '#3b82f6', 'Black': '#475569', 'White': '#f8fafc',
+                'Red': '#ef4444', 'Green': '#22c55e', 'Yellow': '#eab308',
+                'Orange': '#f97316', 'Purple': '#a855f7', 'Gray': '#64748b'
+            };
+            const bgColors = colorLabels.map(l => colorPalette[l] || '#6366f1');
+
+            new Chart(colorCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: colorLabels,
+                    datasets: [{
+                        data: colorCounts,
+                        backgroundColor: bgColors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right', labels: { color: '#1c1630', font: { size: 12 } } }
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

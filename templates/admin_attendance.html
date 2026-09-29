@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance · NATVISION{% endblock %}
+{% block header_title %}Attendance Master Logs & History{% endblock %}
+
+{% block content %}
+<div class="attendance-page">
+    <!-- Filter & Action Card -->
+    <div class="glass-card filter-card">
+        <form method="GET" action="{{ url_for('admin_attendance') }}" class="filter-form">
+            <div class="filter-inputs">
+                <div class="form-group mb-0">
+                    <label for="start_date">From Date</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="form-group mb-0">
+                    <label for="end_date">To Date</label>
+                    <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+                <div class="form-group mb-0">
+                    <label for="department">Department</label>
+                    <select id="department" name="department" class="form-control">
+                        <option value="All" {% if department == 'All' %}selected{% endif %}>All Departments</option>
+                        {% for dept in departments %}
+                            <option value="{{ dept }}" {% if department == dept %}selected{% endif %}>{{ dept }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-secondary">
+                    <i data-lucide="filter"></i>
+                    <span>Apply Filter</span>
+                </button>
+                <a href="{{ url_for('api_export_excel', start_date=start_date, end_date=end_date, department=department) }}" class="btn btn-success">
+                    <i data-lucide="file-spreadsheet"></i>
+                    <span>Export Excel Report</span>
+                </a>
+                <button type="button" class="btn btn-primary" onclick="openManualPunchModal()">
+                    <i data-lucide="fingerprint"></i>
+                    <span>Manual Punch</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Attendance Table Card -->
+    <div class="glass-card table-card mt-2">
+        <div class="card-header">
+            <div class="card-header-left">
+                <i data-lucide="clipboard-list" class="icon-accent"></i>
+                <h4>Attendance Records ({{ records | length }} found)</h4>
+            </div>
+            <span class="badge-pill badge-outline">5-Minute Cooldown Rule Enforced</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Punch IN</th>
+                        <th>Punch OUT</th>
+                        <th>Total Hours</th>
+                        <th>Status</th>
+                        <th>Snapshots</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if records %}
+                        {% for r in records %}
+                            <tr>
+                                <td>
+                                    <span class="font-mono">{{ r.date }}</span>
+                                </td>
+                                <td>
+                                    <div class="employee-cell">
+                                        <div class="cell-avatar">
+                                            <span>{{ r.name[0] | upper if r.name else 'E' }}</span>
+                                        </div>
+                                        <div class="cell-text">
+                                            <strong>{{ r.name }}</strong>
+                                            <span class="emp-code">{{ r.emp_id }}</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="dept-badge">{{ r.department }}</span></td>
+                                <td>
+                                    <span class="time-badge in-time">
+                                        <i data-lucide="log-in"></i>
+                                        {{ r.in_time or '--:--:--' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="time-badge out-time">
+                                        <i data-lucide="log-out"></i>
+                                        {{ r.out_time or '--:--:--' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <strong>{{ r.total_hours }} hrs</strong>
+                                </td>
+                                <td>
+                                    {% if r.status == 'COMPLETED' %}
+                                        <span class="badge-status badge-success">Completed (Out)</span>
+                                    {% elif r.status == 'IN_PROGRESS' %}
+                                        <span class="badge-status badge-warning">In Office</span>
+                                    {% else %}
+                                        <span class="badge-status badge-secondary">{{ r.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="snap-thumbs">
+                                        {% if r.in_snapshot %}
+                                            <img src="/{{ r.in_snapshot }}" alt="IN Snap" class="table-thumb" title="Punch IN Photo" onclick="previewImage(this.src)">
+                                        {% endif %}
+                                        {% if r.out_snapshot %}
+                                            <img src="/{{ r.out_snapshot }}" alt="OUT Snap" class="table-thumb" title="Punch OUT Photo" onclick="previewImage(this.src)">
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5 text-muted">
+                                <i data-lucide="inbox" class="empty-table-icon"></i>
+                                <p class="mt-2">No attendance records found for the selected filters.</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Manual Punch Override -->
+<div id="manual-punch-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="fingerprint" class="icon-accent"></i>
+                <h3>Manual Attendance Punch</h3>
+            </div>
+            <span class="modal-close" onclick="closeManualPunchModal()">&times;</span>
+        </div>
+
+        <form onsubmit="submitManualPunch(event)">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="manual_emp_id">Select Employee</label>
+                    <input type="text" id="manual_emp_id" class="form-control" placeholder="Enter Employee ID (e.g. EMP001)" required>
+                </div>
+                <div class="login-hint-box">
+                    <i data-lucide="info"></i>
+                    <span>Manual punch also obeys the 5-minute In/Out cooldown rule.</span>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeManualPunchModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Punch Attendance</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Image Preview Modal -->
+<div id="image-modal" class="modal">
+    <div class="modal-content modal-img-box">
+        <span class="modal-close" onclick="closeImageModal()">&times;</span>
+        <img id="modal-preview-img" src="" alt="Preview">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function openManualPunchModal() {
+        document.getElementById('manual-punch-modal').classList.add('show');
+    }
+    function closeManualPunchModal() {
+        document.getElementById('manual-punch-modal').classList.remove('show');
+    }
+    function previewImage(src) {
+        const modal = document.getElementById('image-modal');
+        const img = document.getElementById('modal-preview-img');
+        img.src = src;
+        modal.classList.add('show');
+    }
+    function closeImageModal() {
+        document.getElementById('image-modal').classList.remove('show');
+    }
+
+    async function submitManualPunch(e) {
+        e.preventDefault();
+        const empId = document.getElementById('manual_emp_id').value.trim();
+        if (!empId) return;
+
+        try {
+            const res = await fetch('/api/manual_punch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ emp_id: empId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.result.message);
+                window.location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (err) {
+            alert('Failed to execute manual punch: ' + err);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,641 @@
+{% extends "base.html" %}
+
+{% block title %}Employees · NATVISION{% endblock %}
+{% block header_title %}Employee Directory & Facial Registration{% endblock %}
+
+{% block content %}
+<div class="employees-page">
+    <!-- Top Action Bar -->
+    <div class="action-bar-header mb-3">
+        <div class="header-info">
+            <div class="model-status-pill {% if is_model_trained %}model-ready{% else %}model-pending{% endif %}">
+                <span class="live-dot {% if is_model_trained %}bg-success{% else %}bg-warning{% endif %}"></span>
+                <span>AI Biometric Status: <strong>{% if is_model_trained %}Active ({{ known_samples }} Face Models){% else %}Needs Training{% endif %}</strong></span>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <!-- View Mode Switcher (Grid vs List View) -->
+            <div class="view-toggle-group">
+                <button type="button" class="btn btn-icon view-btn active" id="btn-view-grid" onclick="switchEmployeeView('grid')" title="Grid View">
+                    <i data-lucide="layout-grid"></i>
+                </button>
+                <button type="button" class="btn btn-icon view-btn" id="btn-view-list" onclick="switchEmployeeView('list')" title="List View">
+                    <i data-lucide="list"></i>
+                </button>
+            </div>
+
+            <button class="btn btn-secondary" onclick="triggerModelRetrain()">
+                <i data-lucide="refresh-cw" id="retrain-icon"></i>
+                <span>Retrain AI</span>
+            </button>
+            <button class="btn btn-primary" onclick="openAddEmployeeModal()">
+                <i data-lucide="user-plus"></i>
+                <span>+ Register Employee</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Search and Filter Bar -->
+    <div class="glass-card search-filter-card mb-3">
+        <div class="search-input-wrap">
+            <i data-lucide="search"></i>
+            <input type="text" id="employee-search-input" class="form-control" placeholder="Search by employee name, ID, department..." oninput="filterEmployees()">
+        </div>
+        <div class="filter-count-badge">
+            <span id="employee-count-display">{{ employees | length }}</span> Members
+        </div>
+    </div>
+
+    <!-- MODE 1: Employee Grid View -->
+    <div class="employees-grid" id="employees-grid-view">
+        {% if employees and employees | length > 0 %}
+            {% for emp in employees %}
+                <div class="glass-card employee-card employee-item" data-search="{{ emp.name | lower }} {{ emp.emp_id | lower }} {{ emp.department | lower }} {{ emp.email | lower }}">
+                    <!-- Card Header: DP, Name, ID, Dept -->
+                    <div class="emp-card-header">
+                        <div class="emp-photos-preview">
+                            {% if emp.profile_photo %}
+                                <img src="/{{ emp.profile_photo }}" alt="{{ emp.name }}" class="emp-main-photo" onclick="previewImage(this.src)">
+                            {% elif emp.photos and emp.photos | length > 0 %}
+                                <img src="/{{ emp.photos[0] }}" alt="{{ emp.name }}" class="emp-main-photo" onclick="previewImage(this.src)">
+                            {% else %}
+                                <div class="emp-no-photo" onclick="openCropDpModal('{{ emp.emp_id }}', '{{ emp.name }}', '', {{ emp.photos | tojson }})">
+                                    <i data-lucide="user"></i>
+                                </div>
+                            {% endif %}
+                            <button class="crop-dp-badge-btn" onclick="openCropDpModal('{{ emp.emp_id }}', '{{ emp.name }}', '{{ emp.profile_photo or (emp.photos[0] if emp.photos else '') }}', {{ emp.photos | tojson }})" title="Crop DP">
+                                <i data-lucide="crop"></i>
+                            </button>
+                        </div>
+
+                        <div class="emp-card-details">
+                            <div class="emp-name-row">
+                                <h3 class="emp-name" title="{{ emp.name }}">{{ emp.name }}</h3>
+                                <span class="emp-badge-id">{{ emp.emp_id }}</span>
+                            </div>
+                            <span class="emp-dept-pill"><i data-lucide="briefcase"></i> {{ emp.department }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Contact Details -->
+                    <div class="emp-contact-list">
+                        <div class="contact-item" title="{{ emp.email }}">
+                            <i data-lucide="mail"></i>
+                            <span>{{ emp.email }}</span>
+                        </div>
+                        <div class="contact-item" title="{{ emp.phone }}">
+                            <i data-lucide="phone"></i>
+                            <span>{{ emp.phone }}</span>
+                        </div>
+                    </div>
+
+                    <!-- 3-Photo Gallery Strip -->
+                    <div class="emp-gallery-strip">
+                        <div class="strip-header">
+                            <span class="gallery-label">Face Models ({{ emp.photos | length }}/3)</span>
+                            <button class="btn-link-action" onclick="openManagePhotosModal('{{ emp.emp_id }}', '{{ emp.name }}')">
+                                <i data-lucide="camera"></i>
+                                <span>{% if emp.photos | length == 0 %}Add Photos{% else %}Manage{% endif %}</span>
+                            </button>
+                        </div>
+                        <div class="gallery-thumbs">
+                            {% if emp.photos and emp.photos | length > 0 %}
+                                {% for photo in emp.photos %}
+                                    <div class="thumb-with-actions">
+                                        <img src="/{{ photo }}" alt="Face sample" class="gallery-thumb" onclick="previewImage(this.src)">
+                                        <button type="button" class="btn-thumb-set-dp" onclick="openCropDpModal('{{ emp.emp_id }}', '{{ emp.name }}', '{{ photo }}', {{ emp.photos | tojson }})" title="Crop as DP">
+                                            <i data-lucide="crop"></i>
+                                        </button>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="no-samples-pill" onclick="openManagePhotosModal('{{ emp.emp_id }}', '{{ emp.name }}')">
+                                    <i data-lucide="camera-plus"></i>
+                                    <span>Register 3 Face Photos</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Card Actions -->
+                    <div class="emp-card-footer">
+                        <button class="btn btn-sm btn-secondary" onclick="openCropDpModal('{{ emp.emp_id }}', '{{ emp.name }}', '{{ emp.profile_photo or (emp.photos[0] if emp.photos else '') }}', {{ emp.photos | tojson }})" title="Crop DP">
+                            <i data-lucide="crop"></i>
+                            <span>Crop DP</span>
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="openManagePhotosModal('{{ emp.emp_id }}', '{{ emp.name }}')" title="Manage Photos">
+                            <i data-lucide="camera"></i>
+                            <span>Photos</span>
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="openEditModal('{{ emp.emp_id }}')" title="Edit Details">
+                            <i data-lucide="edit-3"></i>
+                            <span>Edit</span>
+                        </button>
+                        <button class="btn btn-sm btn-danger-outline" onclick="deleteEmployee('{{ emp.emp_id }}', '{{ emp.name }}')" title="Delete Employee">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="glass-card empty-employees-card">
+                <i data-lucide="users" class="empty-icon"></i>
+                <h3>No Employees Registered Yet</h3>
+                <p>Register your first employee with 3 facial photos to enable smart camera attendance recognition.</p>
+                <button class="btn btn-primary btn-lg" onclick="openAddEmployeeModal()">
+                    <i data-lucide="user-plus"></i>
+                    <span>Register First Employee</span>
+                </button>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- MODE 2: Employee List / Table View -->
+    <div class="glass-card table-card" id="employees-list-view" style="display:none;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Employee ID</th>
+                        <th>Department</th>
+                        <th>Email Address</th>
+                        <th>Phone</th>
+                        <th>Facial Models</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="employees-list-tbody">
+                    {% if employees and employees | length > 0 %}
+                        {% for emp in employees %}
+                            <tr class="employee-item" data-search="{{ emp.name | lower }} {{ emp.emp_id | lower }} {{ emp.department | lower }} {{ emp.email | lower }}">
+                                <td>
+                                    <div class="employee-cell">
+                                        {% if emp.profile_photo %}
+                                            <img src="/{{ emp.profile_photo }}" alt="{{ emp.name }}" class="table-avatar-img" onclick="previewImage(this.src)">
+                                        {% elif emp.photos and emp.photos | length > 0 %}
+                                            <img src="/{{ emp.photos[0] }}" alt="{{ emp.name }}" class="table-avatar-img" onclick="previewImage(this.src)">
+                                        {% else %}
+                                            <div class="cell-avatar">
+                                                <span>{{ emp.name[0] | upper }}</span>
+                                            </div>
+                                        {% endif %}
+                                        <div class="cell-text">
+                                            <strong>{{ emp.name }}</strong>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="emp-badge-id">{{ emp.emp_id }}</span>
+                                </td>
+                                <td>
+                                    <span class="dept-badge">{{ emp.department }}</span>
+                                </td>
+                                <td>{{ emp.email }}</td>
+                                <td>{{ emp.phone }}</td>
+                                <td>
+                                    <div class="list-photos-wrap" onclick="openManagePhotosModal('{{ emp.emp_id }}', '{{ emp.name }}')">
+                                        {% if emp.photos and emp.photos | length > 0 %}
+                                            <div class="snap-thumbs">
+                                                {% for photo in emp.photos %}
+                                                    <img src="/{{ photo }}" alt="Face sample" class="table-thumb" onclick="event.stopPropagation(); previewImage(this.src)">
+                                                {% endfor %}
+                                            </div>
+                                            <span class="badge-pill badge-success">{{ emp.photos | length }}/3 Photos</span>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation(); openManagePhotosModal('{{ emp.emp_id }}', '{{ emp.name }}')">
+                                                <i data-lucide="camera-plus"></i>
+                                                <span>Add Photos</span>
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if emp.photos and emp.photos | length > 0 %}
+                                        <span class="badge-status badge-success">Active</span>
+                                    {% else %}
+                                        <span class="badge-status badge-warning">No Photos</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="table-actions-row">
+                                        <button class="btn btn-sm btn-secondary" onclick="openCropDpModal('{{ emp.emp_id }}', '{{ emp.name }}', '{{ emp.profile_photo or (emp.photos[0] if emp.photos else '') }}', {{ emp.photos | tojson }})" title="Crop DP">
+                                            <i data-lucide="crop"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" onclick="openManagePhotosModal('{{ emp.emp_id }}', '{{ emp.name }}')" title="Upload / Snap Photos">
+                                            <i data-lucide="camera"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" onclick="openEditModal('{{ emp.emp_id }}')" title="Edit">
+                                            <i data-lucide="edit-3"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger-outline" onclick="deleteEmployee('{{ emp.emp_id }}', '{{ emp.name }}')" title="Delete">
+                                            <i data-lucide="trash-2"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5 text-muted">
+                                No employees found.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Add New Employee with 3 Photos (Upload & Webcam Capture) -->
+<div id="add-employee-modal" class="modal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="user-plus" class="icon-accent"></i>
+                <h3>Register New Employee</h3>
+            </div>
+            <span class="modal-close" onclick="closeAddEmployeeModal()">&times;</span>
+        </div>
+
+        <form id="add-employee-form" onsubmit="submitAddEmployee(event)">
+            <div class="modal-body">
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="emp_id">Employee ID <span class="required">*</span></label>
+                        <input type="text" id="emp_id" name="emp_id" class="form-control" placeholder="e.g. EMP001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="name">Full Name <span class="required">*</span></label>
+                        <input type="text" id="name" name="name" class="form-control" placeholder="e.g. Sarah Connor" required>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="email">Work Email <span class="required">*</span></label>
+                        <input type="email" id="email" name="email" class="form-control" placeholder="sarah@company.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">Phone Number <span class="required">*</span></label>
+                        <input type="tel" id="phone" name="phone" class="form-control" placeholder="+1 (555) 019-2834" required>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="department">Department</label>
+                        <input type="text" id="department" name="department" class="form-control" placeholder="Engineering / Marketing / Operations" value="General">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Portal Login Password <span class="required">*</span></label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="password" name="password" class="form-control" placeholder="Create login password" required>
+                            <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('password', this)" tabindex="-1" title="Show/Hide password">
+                                <i data-lucide="eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3 Photos Capture / Upload Section -->
+                <div class="photo-upload-section">
+                    <div class="section-title-wrap">
+                        <i data-lucide="camera" class="icon-accent"></i>
+                        <h4>Employee Face Registration (3 Photos Required)</h4>
+                    </div>
+                    <p class="section-subtext">Upload 3 clear front-facing face photos or snap them directly using your camera.</p>
+
+                    <!-- Toggle between Upload or Live Webcam Snapshots -->
+                    <div class="photo-source-tabs">
+                        <button type="button" class="photo-tab active" id="tab-file-upload" onclick="switchPhotoSource('file')">
+                            <i data-lucide="upload-cloud"></i>
+                            <span>Upload 3 Photo Files</span>
+                        </button>
+                        <button type="button" class="photo-tab" id="tab-webcam-snap" onclick="switchPhotoSource('webcam')">
+                            <i data-lucide="camera"></i>
+                            <span>Snap from Webcam</span>
+                        </button>
+                    </div>
+
+                    <!-- Mode 1: File Upload -->
+                    <div id="file-upload-mode" class="photo-mode-container">
+                        <div class="file-drop-zone" onclick="document.getElementById('photo-input').click()">
+                            <i data-lucide="image-plus"></i>
+                            <span>Click or drag 3 face photos here</span>
+                            <small>Supported: JPG, PNG (Max 5MB each)</small>
+                            <input type="file" id="photo-input" name="photos" multiple accept="image/*" style="display:none;" onchange="handleFileSelect(event)">
+                        </div>
+                        <div class="selected-files-preview" id="file-preview-grid"></div>
+                    </div>
+
+                    <!-- Mode 2: Live Webcam Snapping -->
+                    <div id="webcam-snap-mode" class="photo-mode-container" style="display:none;">
+                        <div class="webcam-capture-wrapper">
+                            <div class="webcam-video-box">
+                                <video id="webcam-video" autoplay playsinline muted></video>
+                                <button type="button" class="btn btn-accent btn-snap" onclick="captureSnapshot()">
+                                    <i data-lucide="camera"></i>
+                                    <span>Take Photo <span id="snap-counter-badge">1</span>/3</span>
+                                </button>
+                            </div>
+
+                            <div class="webcam-snapped-grid">
+                                <div class="snap-slot" id="slot-1">
+                                    <span class="slot-label">Photo 1 (Front)</span>
+                                    <img id="snap-img-1" class="snap-img" src="" style="display:none;">
+                                    <input type="hidden" name="webcam_photo_1" id="hidden_photo_1">
+                                </div>
+                                <div class="snap-slot" id="slot-2">
+                                    <span class="slot-label">Photo 2 (Slight Left)</span>
+                                    <img id="snap-img-2" class="snap-img" src="" style="display:none;">
+                                    <input type="hidden" name="webcam_photo_2" id="hidden_photo_2">
+                                </div>
+                                <div class="snap-slot" id="slot-3">
+                                    <span class="slot-label">Photo 3 (Slight Right)</span>
+                                    <img id="snap-img-3" class="snap-img" src="" style="display:none;">
+                                    <input type="hidden" name="webcam_photo_3" id="hidden_photo_3">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeAddEmployeeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-lg" id="submit-emp-btn">
+                    <i data-lucide="check"></i>
+                    <span>Register & Train Face AI</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Manage / Upload Photos for Existing Employee -->
+<div id="manage-photos-modal" class="modal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="camera" class="icon-accent"></i>
+                <h3>Update Profile & Face Photos: <span id="manage-photos-emp-name" class="text-primary"></span></h3>
+            </div>
+            <span class="modal-close" onclick="closeManagePhotosModal()">&times;</span>
+        </div>
+
+        <form id="manage-photos-form" onsubmit="submitManagePhotos(event)">
+            <input type="hidden" id="manage_photos_emp_id" name="emp_id">
+            <div class="modal-body">
+                <p class="section-subtext">Upload 3 clear photos or capture them with your webcam to train the face model for this employee.</p>
+
+                <div class="photo-source-tabs">
+                    <button type="button" class="photo-tab active" id="tab-manage-file" onclick="switchManagePhotoSource('file')">
+                        <i data-lucide="upload-cloud"></i>
+                        <span>Upload Photos</span>
+                    </button>
+                    <button type="button" class="photo-tab" id="tab-manage-webcam" onclick="switchManagePhotoSource('webcam')">
+                        <i data-lucide="camera"></i>
+                        <span>Webcam Capture</span>
+                    </button>
+                </div>
+
+                <!-- Mode 1: File Upload -->
+                <div id="manage-file-mode" class="photo-mode-container">
+                    <div class="file-drop-zone" onclick="document.getElementById('manage-photo-input').click()">
+                        <i data-lucide="image-plus"></i>
+                        <span>Click or drag face photos here</span>
+                        <small>JPG, PNG (Front, slight angles)</small>
+                        <input type="file" id="manage-photo-input" name="photos" multiple accept="image/*" style="display:none;" onchange="handleManageFileSelect(event)">
+                    </div>
+                    <div class="selected-files-preview" id="manage-file-preview-grid"></div>
+                </div>
+
+                <!-- Mode 2: Webcam Snapping -->
+                <div id="manage-webcam-mode" class="photo-mode-container" style="display:none;">
+                    <div class="webcam-capture-wrapper">
+                        <div class="webcam-video-box">
+                            <video id="manage-webcam-video" autoplay playsinline muted></video>
+                            <button type="button" class="btn btn-accent btn-snap" onclick="captureManageSnapshot()">
+                                <i data-lucide="camera"></i>
+                                <span>Take Photo <span id="manage-snap-counter-badge">1</span>/3</span>
+                            </button>
+                        </div>
+
+                        <div class="webcam-snapped-grid">
+                            <div class="snap-slot" id="manage-slot-1">
+                                <span class="slot-label">Photo 1 (Front)</span>
+                                <img id="manage-snap-img-1" class="snap-img" src="" style="display:none;">
+                                <input type="hidden" name="webcam_photo_1" id="manage_hidden_photo_1">
+                            </div>
+                            <div class="snap-slot" id="manage-slot-2">
+                                <span class="slot-label">Photo 2 (Slight Left)</span>
+                                <img id="manage-snap-img-2" class="snap-img" src="" style="display:none;">
+                                <input type="hidden" name="webcam_photo_2" id="manage_hidden_photo_2">
+                            </div>
+                            <div class="snap-slot" id="manage-slot-3">
+                                <span class="slot-label">Photo 3 (Slight Right)</span>
+                                <img id="manage-snap-img-3" class="snap-img" src="" style="display:none;">
+                                <input type="hidden" name="webcam_photo_3" id="manage_hidden_photo_3">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeManagePhotosModal()">Cancel</button>
+                <button type="submit" class="btn btn-success btn-lg" id="submit-manage-photos-btn">
+                    <i data-lucide="upload"></i>
+                    <span>Save Photos & Retrain Model</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Edit Employee Details & Photos -->
+<div id="edit-employee-modal" class="modal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="edit" class="icon-accent"></i>
+                <h3>Edit Employee: <span id="edit_modal_title_name" class="text-primary"></span></h3>
+            </div>
+            <span class="modal-close" onclick="closeEditModal()">&times;</span>
+        </div>
+
+        <form id="edit-employee-form" onsubmit="submitEditEmployee(event)">
+            <input type="hidden" id="edit_emp_id" name="emp_id">
+            <div class="modal-body">
+                <!-- Profile Picture (DP) & Registered Photos Section in Edit Modal -->
+                <div class="edit-profile-header-box mb-4">
+                    <div class="edit-dp-preview-wrap">
+                        <img id="edit_modal_dp_img" src="" alt="Profile Picture" class="edit-modal-dp-img" onclick="previewImage(this.src)">
+                        <button type="button" class="btn-edit-change-dp" onclick="triggerEditModalCropDp()" title="Crop / Change Profile Picture">
+                            <i data-lucide="crop"></i>
+                            <span>Crop DP</span>
+                        </button>
+                    </div>
+                    <div class="edit-dp-info">
+                        <h4 id="edit_modal_info_name"></h4>
+                        <span class="emp-badge-id" id="edit_modal_info_id"></span>
+                        <div class="edit-photos-strip mt-2">
+                            <span class="gallery-label">Registered Face Samples (Click to Crop as DP):</span>
+                            <div class="gallery-thumbs mt-1" id="edit_modal_photos_strip"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="edit_emp_code">Employee ID <span class="required">*</span></label>
+                        <input type="text" id="edit_emp_code" name="new_emp_id" class="form-control font-mono" placeholder="EMP001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_name">Full Name <span class="required">*</span></label>
+                        <input type="text" id="edit_name" name="name" class="form-control" required>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="edit_department">Department</label>
+                        <input type="text" id="edit_department" name="department" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_email">Email Address <span class="required">*</span></label>
+                        <input type="email" id="edit_email" name="email" class="form-control" required>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="edit_phone">Phone Number <span class="required">*</span></label>
+                        <input type="tel" id="edit_phone" name="phone" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_new_password">Change Password (leave empty to keep unchanged)</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="edit_new_password" name="new_password" class="form-control" placeholder="••••••••">
+                            <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('edit_new_password', this)" tabindex="-1" title="Show/Hide password">
+                                <i data-lucide="eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Interactive Profile Picture (DP) Image Cropper -->
+<div id="crop-dp-modal" class="modal">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <div class="modal-title-wrap">
+                <i data-lucide="crop" class="icon-accent"></i>
+                <h3>Crop & Set Profile Picture: <span id="cropper-emp-title" class="text-primary"></span></h3>
+            </div>
+            <span class="modal-close" onclick="closeCropDpModal()">&times;</span>
+        </div>
+
+        <div class="modal-body">
+            <!-- Source Selector: Choose from registered photos or upload new -->
+            <div class="cropper-source-bar mb-3">
+                <div class="source-bar-left">
+                    <span class="gallery-label">Pick Photo to Crop:</span>
+                    <div class="cropper-sample-thumbs" id="cropper-sample-thumbs"></div>
+                </div>
+                <div class="source-bar-right">
+                    <label class="btn btn-sm btn-secondary" for="cropper-custom-file-input">
+                        <i data-lucide="upload"></i>
+                        <span>Upload New Image</span>
+                    </label>
+                    <input type="file" id="cropper-custom-file-input" accept="image/*" style="display:none;" onchange="handleCropperCustomFile(event)">
+                </div>
+            </div>
+
+            <!-- Cropper Workspace Area -->
+            <div class="cropper-workspace-grid">
+                <div class="cropper-canvas-wrap">
+                    <img id="cropper-target-img" src="" alt="Image to Crop" style="max-width:100%; display:block;">
+                </div>
+
+                <div class="cropper-preview-sidebar">
+                    <span class="gallery-label">Circular Avatar Preview:</span>
+                    <div class="dp-circle-preview-box">
+                        <div class="cropper-preview-container preview-circle"></div>
+                    </div>
+
+                    <span class="gallery-label mt-3">Square Preview:</span>
+                    <div class="dp-square-preview-box">
+                        <div class="cropper-preview-container preview-square"></div>
+                    </div>
+
+                    <!-- Cropper Controls -->
+                    <div class="cropper-toolbar-controls mt-3">
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperZoom(0.1)" title="Zoom In">
+                            <i data-lucide="zoom-in"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperZoom(-0.1)" title="Zoom Out">
+                            <i data-lucide="zoom-out"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperRotate(-90)" title="Rotate Left">
+                            <i data-lucide="rotate-ccw"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperRotate(90)" title="Rotate Right">
+                            <i data-lucide="rotate-cw"></i>
+                        </button>
+                        <button type="button" class="btn btn-icon btn-sm btn-secondary" onclick="cropperReset()" title="Reset">
+                            <i data-lucide="refresh-cw"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeCropDpModal()">Cancel</button>
+            <button type="button" class="btn btn-success btn-lg" id="btn-save-crop-dp" onclick="saveCroppedDp()">
+                <i data-lucide="check"></i>
+                <span>Save & Set as Profile Picture (DP)</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Image Preview -->
+<div id="image-modal" class="modal">
+    <div class="modal-content modal-img-box">
+        <span class="modal-close" onclick="closeImageModal()">&times;</span>
+        <img id="modal-preview-img" src="" alt="Preview">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    window.EMPLOYEES_DATA = {{ employees | tojson | safe }};
+</script>
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script>
+    function previewImage(src) {
+        const modal = document.getElementById('image-modal');
+        const img = document.getElementById('modal-preview-img');
+        img.src = src;
+        modal.classList.add('show');
+    }
+    function closeImageModal() {
+        document.getElementById('image-modal').classList.remove('show');
+    }
+</script>
+{% endblock %}

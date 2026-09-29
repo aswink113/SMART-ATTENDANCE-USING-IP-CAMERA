@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in · NATVISION</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/natvision.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=natvision-light-2">
+</head>
+<body class="theme-light login-body">
+    <div class="login-stage">
+        <section class="login-showcase">
+            <div class="showcase-logo-plate">
+                <img src="{{ url_for('static', filename='img/natvision.png') }}" alt="NATVISION" class="showcase-logo">
+            </div>
+            <p class="showcase-kicker">Smart attendance</p>
+            <h2>Face recognition and gesture punch, in one calm workspace.</h2>
+            <ul class="showcase-points">
+                <li>
+                    <i data-lucide="scan-face"></i>
+                    <div>
+                        <strong>Live face match</strong>
+                        <span>IP camera and browser camera feeds stay on the same attendance engine.</span>
+                    </div>
+                </li>
+                <li>
+                    <i data-lucide="hand"></i>
+                    <div>
+                        <strong>Raise a hand to punch</strong>
+                        <span>IN and OUT are captured with a five-minute cooldown.</span>
+                    </div>
+                </li>
+                <li>
+                    <i data-lucide="bar-chart-3"></i>
+                    <div>
+                        <strong>Floor analytics</strong>
+                        <span>Presence, dwell time, and hourly traffic in a single view.</span>
+                    </div>
+                </li>
+            </ul>
+        </section>
+
+        <section class="login-panel">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="login-alerts">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">
+                                <i data-lucide="{% if category == 'danger' %}alert-circle{% else %}info{% endif %}"></i>
+                                <span>{{ message }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <div class="glass-card login-card">
+                <div class="login-card-head">
+                    <img src="{{ url_for('static', filename='img/natvision.png') }}" alt="NATVISION" class="login-card-logo">
+                    <h1>Welcome back</h1>
+                    <p>Sign in with an admin or employee account.</p>
+                </div>
+
+                <form method="POST" action="{{ url_for('login_page') }}" class="login-form">
+                    <div class="form-group">
+                        <label for="username">Username, employee ID, or email</label>
+                        <div class="input-with-icon">
+                            <i data-lucide="user" id="user-icon"></i>
+                            <input type="text" id="username" name="username" class="form-control" placeholder="Enter username, ID, or email" required autofocus>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-with-icon password-input-wrap">
+                            <i data-lucide="lock"></i>
+                            <input type="password" id="password" name="password" class="form-control" placeholder="Enter your password" required>
+                            <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('password', this)" tabindex="-1" title="Show or hide password">
+                                <i data-lucide="eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="login-hint-box" id="login-hint">
+                        <i data-lucide="shield-check"></i>
+                        <span>One sign-in for <strong>admin</strong> and <strong>employee</strong> accounts.</span>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block btn-lg">
+                        <span id="submit-btn-text">Sign in</span>
+                        <i data-lucide="arrow-right"></i>
+                    </button>
+                </form>
+
+                <div class="login-footer-info">
+                    <div class="feature-tag">
+                        <i data-lucide="hand"></i>
+                        <span>Gesture punch</span>
+                    </div>
+                    <div class="feature-tag">
+                        <i data-lucide="timer"></i>
+                        <span>5-min cooldown</span>
+                    </div>
+                    <div class="feature-tag">
+                        <i data-lucide="cctv"></i>
+                        <span>IP camera</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block title %}Camera · NATVISION{% endblock %}
+{% block header_title %}IP Camera & Punch Engine Configuration{% endblock %}
+
+{% block content %}
+<div class="camera-settings-page">
+    <div class="settings-grid">
+        <!-- Settings Form Card -->
+        <div class="glass-card settings-form-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="cctv" class="icon-accent"></i>
+                    <h4>IP Camera Stream Configuration</h4>
+                </div>
+                <span class="badge-pill badge-outline">RTSP / ONVIF / HTTP / USB</span>
+            </div>
+
+            <form id="camera-settings-form" onsubmit="submitCameraSettings(event)">
+                <div class="form-group">
+                    <label for="camera_source">Video Source Type</label>
+                    <select id="camera_source" name="camera_source" class="form-control" onchange="handleSourceChange()">
+                        <option value="0" {% if settings.camera_source == '0' %}selected{% endif %}>Local USB / Built-in Webcam (Index 0)</option>
+                        <option value="1" {% if settings.camera_source == '1' %}selected{% endif %}>Secondary Camera (Index 1)</option>
+                        <option value="rtsp" {% if settings.camera_source == 'rtsp' %}selected{% endif %}>Network IP Camera (RTSP Protocol)</option>
+                    </select>
+                </div>
+
+                <!-- RTSP Specific Fields (shown when rtsp is selected) -->
+                <div id="rtsp-fields-block" class="rtsp-fields-box" {% if settings.camera_source != 'rtsp' and not settings.rtsp_url_override %}style="display:none;"{% endif %}>
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label for="rtsp_ip">IP Camera Host / IP Address</label>
+                            <input type="text" id="rtsp_ip" name="rtsp_ip" class="form-control" placeholder="192.168.1.120" value="{{ settings.rtsp_ip }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="rtsp_port">RTSP Port</label>
+                            <input type="text" id="rtsp_port" name="rtsp_port" class="form-control" placeholder="554" value="{{ settings.rtsp_port or '554' }}">
+                        </div>
+                    </div>
+
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label for="rtsp_user">Camera Username</label>
+                            <input type="text" id="rtsp_user" name="rtsp_user" class="form-control" placeholder="admin" value="{{ settings.rtsp_user }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="rtsp_pass">Camera Password</label>
+                            <div class="password-input-wrap">
+                                <input type="password" id="rtsp_pass" name="rtsp_pass" class="form-control" placeholder="••••••••" value="{{ settings.rtsp_pass }}">
+                                <button type="button" class="btn-toggle-password" onclick="togglePasswordVisibility('rtsp_pass', this)" tabindex="-1" title="Show/Hide password">
+                                    <i data-lucide="eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rtsp_path">RTSP Stream Path</label>
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.4rem;">
+                            <input type="text" id="rtsp_path" name="rtsp_path" class="form-control" placeholder="/Streaming/Channels/101" value="{{ settings.rtsp_path or '/Streaming/Channels/101' }}">
+                        </div>
+                        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.35rem;">
+                            <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('rtsp_path').value='/Streaming/Channels/101'" title="Hikvision Main Stream">Hikvision Main (/Streaming/Channels/101)</button>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('rtsp_path').value='/Streaming/Channels/102'" title="Hikvision Sub Stream">Hikvision Sub (/Streaming/Channels/102)</button>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('rtsp_path').value='/cam/realmonitor?channel=1&subtype=0'" title="Dahua/CP PLUS">Dahua/CP PLUS</button>
+                            <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('rtsp_path').value='/stream'" title="Generic Stream">/stream</button>
+                        </div>
+                        <small class="form-hint" style="color: var(--text-secondary);">
+                            ℹ️ <strong>Hikvision Tips:</strong> Set IP to <code>192.168.1.72</code>, Port <code>554</code>, and Path <code>/Streaming/Channels/101</code> (or <code>/Streaming/Channels/102</code>).
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rtsp_url_override">Direct Full RTSP / HTTP URL (Optional Override)</label>
+                        <input type="text" id="rtsp_url_override" name="rtsp_url_override" class="form-control" placeholder="rtsp://admin:pass@192.168.1.72:554/Streaming/Channels/101" value="{{ settings.rtsp_url_override }}">
+                    </div>
+                </div>
+
+                <!-- Punch Rules & AI Thresholds -->
+                <div class="section-divider"></div>
+                <div class="section-title-wrap">
+                    <i data-lucide="sliders" class="icon-accent"></i>
+                    <h4>Attendance In/Out Rule & AI Thresholds</h4>
+                </div>
+
+                <div class="form-row-3 mt-3">
+                    <div class="form-group">
+                        <label for="cooldown_minutes">In/Out Cooldown (Minutes) <span class="badge-pill badge-primary">Rule</span></label>
+                        <input type="number" id="cooldown_minutes" name="cooldown_minutes" class="form-control" min="1" max="60" value="{{ settings.cooldown_minutes or 5 }}" required>
+                        <small class="form-hint">Skips duplicate punches for 5 mins; next punch after cooldown marks OUT.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="face_threshold">Face Match Threshold (0.1 - 0.9)</label>
+                        <input type="number" step="0.01" min="0.10" max="0.95" id="face_threshold" name="face_threshold" class="form-control" value="{{ settings.face_threshold or 0.40 }}" required>
+                        <small class="form-hint">Higher = stricter matching (prevents false matches).</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="gesture_threshold">Hand Raise Sensitivity (0.1 - 0.9)</label>
+                        <input type="number" step="0.01" min="0.10" max="0.95" id="gesture_threshold" name="gesture_threshold" class="form-control" value="{{ settings.gesture_threshold or 0.50 }}" required>
+                        <small class="form-hint">Minimum confidence to recognize raised hand gesture.</small>
+                    </div>
+                </div>
+
+                <!-- AI Addon Features On/Off Options -->
+                <div class="section-divider"></div>
+                <div class="section-title-wrap">
+                    <i data-lucide="layers" class="icon-accent"></i>
+                    <h4>AI Addon Modules (On / Off Controls)</h4>
+                </div>
+
+                <div class="addon-toggles-grid mt-3" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div class="addon-card glass-card p-3" style="border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; background: rgba(255,255,255,0.02);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label for="enable_machine_detection" style="font-weight: 600; cursor: pointer;">
+                                <i data-lucide="cpu" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Machine Front Detection
+                            </label>
+                            <input type="checkbox" id="enable_machine_detection" name="enable_machine_detection" value="1" {% if settings.get('enable_machine_detection', 1) %}checked{% endif %} style="width: 20px; height: 20px; cursor: pointer;">
+                        </div>
+                        <small style="color: var(--text-secondary); font-size: 0.8rem; display: block;">Detects persons passing in front of the attendance camera machine.</small>
+                    </div>
+
+                    <div class="addon-card glass-card p-3" style="border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; background: rgba(255,255,255,0.02);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label for="enable_dwell_tracking" style="font-weight: 600; cursor: pointer;">
+                                <i data-lucide="timer" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Dwell & Peak Time Analytics
+                            </label>
+                            <input type="checkbox" id="enable_dwell_tracking" name="enable_dwell_tracking" value="1" {% if settings.get('enable_dwell_tracking', 1) %}checked{% endif %} style="width: 20px; height: 20px; cursor: pointer;">
+                        </div>
+                        <small style="color: var(--text-secondary); font-size: 0.8rem; display: block;">Tracks time spent in front of machine & calculates peak/low hours.</small>
+                    </div>
+
+                    <div class="addon-card glass-card p-3" style="border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; background: rgba(255,255,255,0.02);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label for="enable_apparel_color" style="font-weight: 600; cursor: pointer;">
+                                <i data-lucide="palette" style="width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;"></i> Apparel Top Dress Color
+                            </label>
+                            <input type="checkbox" id="enable_apparel_color" name="enable_apparel_color" value="1" {% if settings.get('enable_apparel_color', 1) %}checked{% endif %} style="width: 20px; height: 20px; cursor: pointer;">
+                        </div>
+                        <small style="color: var(--text-secondary); font-size: 0.8rem; display: block;">Classifies top dress/shirt colors of individuals in camera view.</small>
+                    </div>
+                </div>
+
+                <div class="form-actions mt-2" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <button type="submit" class="btn btn-primary" id="save-cam-btn">
+                        <i data-lucide="save"></i>
+                        <span>Save & Apply Settings</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="test-cam-btn" onclick="testIpCameraConnection()">
+                        <i data-lucide="activity"></i>
+                        <span>Test IP Camera Connection</span>
+                    </button>
+                </div>
+                <div id="test-connection-result" class="mt-2" style="display:none;"></div>
+            </form>
+        </div>
+
+        <!-- Live Diagnostics & Stream Preview Card -->
+        <div class="glass-card diagnostics-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="activity" class="icon-accent"></i>
+                    <h4>Stream Diagnostics</h4>
+                </div>
+                <div class="card-header-right">
+                    <button type="button" class="btn btn-sm btn-accent" id="btn-diag-cam" onclick="toggleDiagBrowserStream()">
+                        <i data-lucide="camera"></i>
+                        <span id="diag-cam-text">Use Browser Camera</span>
+                    </button>
+                    <span class="badge-pill {% if camera_status == 'Online' %}badge-success{% else %}badge-warning{% endif %}">
+                        {{ camera_status }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="diagnostics-metrics">
+                <div class="diag-metric">
+                    <span class="diag-label">Active Source</span>
+                    <strong class="diag-val">{{ camera_source }}</strong>
+                </div>
+                <div class="diag-metric">
+                    <span class="diag-label">Stream FPS</span>
+                    <strong class="diag-val" id="diag-fps">{{ camera_fps }} FPS</strong>
+                </div>
+                <div class="diag-metric">
+                    <span class="diag-label">Gesture Engine</span>
+                    <strong class="diag-val text-success">MediaPipe Tasks 1.0 (Active)</strong>
+                </div>
+                <div class="diag-metric">
+                    <span class="diag-label">Face Engine</span>
+                    <strong class="diag-val text-success">YuNet + SFace ONNX (Active)</strong>
+                </div>
+            </div>
+
+            <div class="diagnostics-stream-box mt-3" style="position: relative;">
+                <img src="{{ url_for('video_feed') }}" alt="Camera Stream" class="diag-img">
+                <video id="diag-client-video" autoplay playsinline muted style="display:none;"></video>
+                <canvas id="diag-client-canvas" style="display:none;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let diagStreamInterval = null;
+    let diagMediaStream = null;
+    let isDiagStreaming = false;
+
+    async function toggleDiagBrowserStream() {
+        const btnText = document.getElementById('diag-cam-text');
+        const video = document.getElementById('diag-client-video');
+        const canvas = document.getElementById('diag-client-canvas');
+
+        if (!isDiagStreaming) {
+            try {
+                try {
+                    await fetch('/api/camera/mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'browser' })
+                    });
+                    await new Promise(r => setTimeout(r, 400));
+                } catch(e) {}
+
+                diagMediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, frameRate: { ideal: 15 } }
+                });
+                video.srcObject = diagMediaStream;
+                video.play();
+                isDiagStreaming = true;
+                btnText.textContent = "Stop Browser Camera";
+
+                canvas.width = 640;
+                canvas.height = 480;
+                const ctx = canvas.getContext('2d');
+                let isSendingFrame = false;
+
+                diagStreamInterval = setInterval(async () => {
+                    if (!isDiagStreaming || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+                    if (isSendingFrame) return;
+                    isSendingFrame = true;
+                    try {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const b64 = canvas.toDataURL('image/jpeg', 0.65);
+                        await fetch('/api/camera/stream_frame', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image: b64 })
+                        });
+                    } catch (e) {
+                    } finally {
+                        isSendingFrame = false;
+                    }
+                }, 45);
+                showToast("✅ Browser Camera connected to AI Engine!", "success");
+            } catch (err) {
+                try {
+                    await fetch('/api/camera/mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: 'server' })
+                    });
+                } catch(e) {}
+                alert("Could not access browser camera: " + err.message);
+            }
+        } else {
+            if (diagStreamInterval) clearInterval(diagStreamInterval);
+            if (diagMediaStream) {
+                diagMediaStream.getTracks().forEach(t => t.stop());
+                diagMediaStream = null;
+            }
+            isDiagStreaming = false;
+            btnText.textContent = "Use Browser Camera";
+            try {
+                await fetch('/api/camera/mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'server' })
+                });
+            } catch(e) {}
+            showToast("Switched back to default camera feed.", "info");
+        }
+    }
+
+    function handleSourceChange() {
+        const sourceVal = document.getElementById('camera_source').value;
+        const rtspBlock = document.getElementById('rtsp-fields-block');
+        if (sourceVal === 'rtsp') {
+            rtspBlock.style.display = 'block';
+        } else {
+            rtspBlock.style.display = 'none';
+        }
+    }
+
+    async function submitCameraSettings(e) {
+        e.preventDefault();
+        const form = document.getElementById('camera-settings-form');
+        const formData = new FormData(form);
+        const saveBtn = document.getElementById('save-cam-btn');
+
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Applying Settings...</span>';
+        lucide.createIcons();
+
+        try {
+            const res = await fetch('/api/camera/save', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert('✅ ' + data.message);
+                window.location.reload();
+            } else {
+                alert('❌ ' + data.message);
+            }
+        } catch (err) {
+            alert('Failed to save settings: ' + err);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i data-lucide="save"></i><span>Save & Apply Settings</span>';
+            lucide.createIcons();
+        }
+    }
+
+    async function testIpCameraConnection() {
+        const testBtn = document.getElementById('test-cam-btn');
+        const resultBox = document.getElementById('test-connection-result');
+        const form = document.getElementById('camera-settings-form');
+        const formData = new FormData(form);
+
+        testBtn.disabled = true;
+        testBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Probing IP Camera...</span>';
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = '<div class="alert alert-info"><i data-lucide="loader-2" class="spin"></i><span>Attempting connection to RTSP host & probing stream paths...</span></div>';
+        lucide.createIcons();
+
+        try {
+            const res = await fetch('/api/camera/test', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                resultBox.innerHTML = `
+                    <div class="alert alert-success">
+                        <i data-lucide="check-circle"></i>
+                        <div>
+                            <strong>Connected Successfully!</strong><br>
+                            <small>${data.message}</small><br>
+                            <small>Stream URL: <code>${data.working_url}</code></small>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resultBox.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i data-lucide="alert-circle"></i>
+                        <div>
+                            <strong>Connection Failed</strong><br>
+                            <small>${data.message}</small>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (err) {
+            resultBox.innerHTML = `<div class="alert alert-danger"><i data-lucide="alert-circle"></i><span>Network test error: ${err.message}</span></div>`;
+        } finally {
+            testBtn.disabled = false;
+            testBtn.innerHTML = '<i data-lucide="activity"></i><span>Test IP Camera Connection</span>';
+            lucide.createIcons();
+        }
+    }
+</script>
+{% endblock %}
