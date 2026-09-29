@@ -47,6 +47,11 @@ class CameraStreamManager:
         # Spatial Heatmap Dwell Accumulation Matrix (64 x 48 grid)
         self.heatmap_grid = np.zeros((48, 64), dtype=np.float32)
 
+        # Custom user-marked target location (normalized x, y between 0.0 - 1.0)
+        self.marked_location = None  # tuple (x_norm, y_norm, label)
+        # Hourly occupancy tracking for the marked location: hour_str "00:00".."23:00" -> count of detections
+        self.marked_location_hourly_counts = {f"{h:02d}:00": 0 for h in range(24)}
+
         self.start()
 
     def get_source_from_settings(self):
@@ -584,12 +589,25 @@ class CameraStreamManager:
                 current_seen_keys.add(track_key)
 
                 # Accumulate spatial dwell position density in heatmap grid
-                cx_norm = int(np.clip((fx + fw / 2.0) / float(frame_w) * 64.0, 0, 63))
-                cy_norm = int(np.clip((fy + fh / 2.0) / float(frame_h) * 48.0, 0, 47))
+                person_cx_norm = (fx + fw / 2.0) / float(frame_w)
+                person_cy_norm = (fy + fh / 2.0) / float(frame_h)
+
+                cx_grid = int(np.clip(person_cx_norm * 64.0, 0, 63))
+                cy_grid = int(np.clip(person_cy_norm * 48.0, 0, 47))
                 # Increment dwell density around center position
-                for dy in range(max(0, cy_norm - 2), min(48, cy_norm + 3)):
-                    for dx in range(max(0, cx_norm - 2), min(64, cx_norm + 3)):
+                for dy in range(max(0, cy_grid - 2), min(48, cy_grid + 3)):
+                    for dx in range(max(0, cx_grid - 2), min(64, cx_grid + 3)):
                         self.heatmap_grid[dy, dx] += 0.05
+
+                # Check proximity to user custom marked location
+                if self.marked_location:
+                    mx_norm, my_norm, _ = self.marked_location
+                    # Proximity radius check (approx 18% normalized distance)
+                    dist = np.hypot(person_cx_norm - mx_norm, person_cy_norm - my_norm)
+                    if dist <= 0.18:
+                        current_hour = datetime.now().strftime('%H:00')
+                        if current_hour in self.marked_location_hourly_counts:
+                            self.marked_location_hourly_counts[current_hour] += 1
 
                 recognized_faces.append({
                     'emp_id': emp_id,
@@ -673,6 +691,22 @@ class CameraStreamManager:
             cv2.rectangle(annotated, (tx - 6, ty - th - 6), (tx + tw + 6, ty + 6), (15, 23, 42), -1)
             cv2.rectangle(annotated, (tx - 6, ty - th - 6), (tx + tw + 6, ty + 6), (0, 0, 255), 1)
             cv2.putText(annotated, tag_text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 255), 2)
+
+        # Draw User Custom Marked Location Target Pin if set
+        if self.marked_location:
+            mx_norm, my_norm, m_label = self.marked_location
+            m_px = int(mx_norm * w)
+            m_py = int(my_norm * h)
+            # Neon Cyan Pin Marker
+            cv2.circle(annotated, (m_px, m_py), 12, (255, 255, 0), -1)
+            cv2.circle(annotated, (m_px, m_py), 20, (255, 255, 0), 2)
+            cv2.drawMarker(annotated, (m_px, m_py), (0, 0, 0), cv2.MARKER_CROSS, 12, 2)
+            lbl = f"📍 {m_label}"
+            (lw, lh), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 2)
+            lx = max(10, min(w - lw - 10, m_px - int(lw / 2)))
+            ly = max(40, m_py - 24)
+            cv2.rectangle(annotated, (lx - 4, ly - lh - 4), (lx + lw + 4, ly + 4), (6, 182, 212), -1)
+            cv2.putText(annotated, lbl, (lx, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2)
 
         with self.lock:
             detections = self.latest_detections.copy()

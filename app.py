@@ -576,6 +576,45 @@ def api_manual_punch():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/camera/mark_location', methods=['POST'])
+@admin_required
+def api_mark_camera_location():
+    try:
+        data = request.get_json() or {}
+        x_norm = float(data.get('x_norm', 0.5))
+        y_norm = float(data.get('y_norm', 0.5))
+        label = str(data.get('label', 'Marked Zone')).strip() or 'Marked Zone'
+
+        camera_stream.marked_location = (x_norm, y_norm, label)
+        return jsonify({
+            'success': True,
+            'message': f'Location "{label}" marked successfully.',
+            'marked_location': {'x_norm': x_norm, 'y_norm': y_norm, 'label': label}
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/camera/marked_location_stats')
+@admin_required
+def api_marked_location_stats():
+    # Return hourly occupancy counts for the bar plot chart
+    counts = camera_stream.marked_location_hourly_counts
+    marked_loc = camera_stream.marked_location
+    total_dwells = sum(counts.values())
+
+    # Format data for Chart.js bar plot
+    labels = list(counts.keys())
+    values = list(counts.values())
+
+    return jsonify({
+        'success': True,
+        'has_marked_location': marked_loc is not None,
+        'label': marked_loc[2] if marked_loc else 'No Location Marked',
+        'total_dwell_count': total_dwells,
+        'hourly_labels': labels,
+        'hourly_values': values
+    })
+
 @app.route('/api/attendance/export')
 @admin_required
 def api_export_excel():

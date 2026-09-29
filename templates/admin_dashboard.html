@@ -70,6 +70,10 @@
                         <i data-lucide="camera" id="browser-cam-icon"></i>
                         <span id="browser-cam-text">Use Browser Camera</span>
                     </button>
+                    <button class="btn btn-sm btn-info" onclick="promptMarkLocation()" title="Click to mark a location pin on video feed">
+                        <i data-lucide="map-pin"></i>
+                        <span>Mark Location</span>
+                    </button>
                     <span class="badge-pill badge-outline" id="camera-fps-badge">FPS: --</span>
                     <button class="btn btn-sm btn-secondary" onclick="reloadStream()" title="Reload Stream">
                         <i data-lucide="refresh-cw"></i>
@@ -80,7 +84,7 @@
                 </div>
             </div>
 
-            <div class="stream-container" id="stream-container">
+            <div class="stream-container" id="stream-container" style="position: relative; cursor: crosshair;" onclick="handleStreamContainerClick(event)">
                 <img src="{{ url_for('video_feed') }}" id="live-camera-img" alt="Live Camera Feed" class="stream-img">
                 
                 <!-- Hidden Client Video & Canvas for Browser Streaming -->
@@ -94,18 +98,22 @@
                         <span>Raise Hand To Punch IN / OUT</span>
                     </div>
                     <div class="hud-item hud-rule">
-                        <i data-lucide="timer"></i>
-                        <span>5-Min Punch Cooldown Active</span>
+                        <i data-lucide="crosshair"></i>
+                        <span>Click stream image to Mark Location Pin</span>
                     </div>
                 </div>
             </div>
 
             <div class="stream-footer">
                 <div class="stream-info-pill">
-                    <i data-lucide="cctv"></i>
-                    <span id="active-source-label">Source: <strong>{{ settings.camera_source_str or 'Webcam / RTSP' }}</strong></span>
+                    <i data-lucide="map-pin" class="text-info"></i>
+                    <span id="marked-location-label">Marked Location: <strong>None (Click video image to mark pin)</strong></span>
                 </div>
                 <div class="stream-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="promptMarkLocation()">
+                        <i data-lucide="crosshair"></i>
+                        <span>Set Target Zone</span>
+                    </button>
                     <a href="{{ url_for('admin_camera') }}" class="btn btn-sm btn-secondary">
                         <i data-lucide="settings"></i>
                         <span>Configure Camera / RTSP</span>
@@ -312,6 +320,20 @@
         </div>
 
         <div class="analytics-charts-grid mt-3">
+            <!-- 1. Custom Marked Location Occupancy Bar Plot -->
+            <div class="glass-card chart-panel" style="grid-column: 1 / -1;">
+                <div class="card-header-left" style="justify-content: space-between; margin-bottom: 0.8rem;">
+                    <h5 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="bar-chart-3" class="text-info"></i>
+                        People At Marked Location Over Time (Hourly Bar Plot)
+                    </h5>
+                    <span class="badge-pill badge-outline" id="marked-chart-subtitle">📍 Location: Not Set</span>
+                </div>
+                <div class="chart-canvas-wrap" style="height: 280px; position: relative;">
+                    <canvas id="markedLocationBarChart"></canvas>
+                </div>
+            </div>
+
             <div class="glass-card chart-panel">
                 <h5>
                     <i data-lucide="bar-chart-2"></i>
@@ -479,8 +501,121 @@
         document.getElementById('image-modal').classList.remove('show');
     }
 
+    // ---------------- Mark Custom Target Location Handlers ----------------
+    let markedLocationChart = null;
+
+    async function setMarkedLocation(x_norm, y_norm, labelName) {
+        try {
+            const res = await fetch('/api/camera/mark_location', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x_norm: x_norm, y_norm: y_norm, label: labelName })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const labelEl = document.getElementById('marked-location-label');
+                if (labelEl) {
+                    labelEl.innerHTML = `Marked Location: <strong>📍 ${data.marked_location.label}</strong> (x: ${Math.round(x_norm * 100)}%, y: ${Math.round(y_norm * 100)}%)`;
+                }
+                const subEl = document.getElementById('marked-chart-subtitle');
+                if (subEl) {
+                    subEl.innerText = `📍 Location: ${data.marked_location.label}`;
+                }
+                showToast('📍 Target location marked: ' + data.marked_location.label, 'success');
+                updateMarkedLocationChart();
+            } else {
+                alert('Failed to mark location: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Mark location error:', err);
+        }
+    }
+
+    function handleStreamContainerClick(event) {
+        const container = document.getElementById('stream-container');
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        const x_norm = Math.max(0.02, Math.min(0.98, clickX / rect.width));
+        const y_norm = Math.max(0.02, Math.min(0.98, clickY / rect.height));
+
+        const zoneName = prompt('Enter a label for this marked location (e.g. Counter A, Main Gate, Entrance):', 'Marked Zone 1');
+        if (zoneName && zoneName.trim()) {
+            setMarkedLocation(x_norm, y_norm, zoneName.trim());
+        }
+    }
+
+    function promptMarkLocation() {
+        const zoneName = prompt('Enter label for new target location zone:', 'Counter A');
+        if (zoneName && zoneName.trim()) {
+            setMarkedLocation(0.5, 0.5, zoneName.trim());
+        }
+    }
+
+    async function updateMarkedLocationChart() {
+        try {
+            const res = await fetch('/api/camera/marked_location_stats');
+            const data = await res.json();
+            if (!data.success) return;
+
+            const markedCtx = document.getElementById('markedLocationBarChart');
+            if (!markedCtx) return;
+
+            const subEl = document.getElementById('marked-chart-subtitle');
+            if (subEl) {
+                subEl.innerText = `📍 Location: ${data.label}`;
+            }
+
+            if (!markedLocationChart) {
+                markedLocationChart = new Chart(markedCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.hourly_labels,
+                        datasets: [{
+                            label: 'People Dwells at Marked Location',
+                            data: data.hourly_values,
+                            backgroundColor: 'rgba(6, 182, 212, 0.75)',
+                            borderColor: '#06b6d4',
+                            borderWidth: 2,
+                            borderRadius: 6,
+                            hoverBackgroundColor: '#06b6d4'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#9ca3af', font: { size: 12, weight: 'bold' } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `Occupancy Dwells: ${context.parsed.y} detections`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { color: 'rgba(139, 92, 246, 0.12)' }, ticks: { color: '#9ca3af', font: { size: 11 } } },
+                            y: { grid: { color: 'rgba(139, 92, 246, 0.12)' }, ticks: { color: '#9ca3af', precision: 0 }, beginAtZero: true }
+                        }
+                    }
+                });
+            } else {
+                markedLocationChart.data.labels = data.hourly_labels;
+                markedLocationChart.data.datasets[0].data = data.hourly_values;
+                markedLocationChart.update();
+            }
+        } catch (err) {
+            console.error('Error fetching marked location stats:', err);
+        }
+    }
+
     // Initialize Machine Passage Analytics Charts
     document.addEventListener('DOMContentLoaded', function() {
+        updateMarkedLocationChart();
+        setInterval(updateMarkedLocationChart, 5000); // Poll chart updates every 5 seconds
+
         // 1. Hourly Traffic Peak/Low Bar Chart
         const hourlyCtx = document.getElementById('hourlyTrafficChart');
         if (hourlyCtx) {
@@ -493,8 +628,8 @@
                     datasets: [{
                         label: 'Passes',
                         data: hourlyData,
-                        backgroundColor: 'rgba(109, 40, 217, 0.72)',
-                        borderColor: '#6d28d9',
+                        backgroundColor: 'rgba(139, 92, 246, 0.72)',
+                        borderColor: '#8b5cf6',
                         borderWidth: 1.5,
                         borderRadius: 4
                     }]
@@ -504,8 +639,8 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { grid: { color: 'rgba(76,29,149,0.06)' }, ticks: { color: '#5c5670', font: { size: 11 } } },
-                        y: { grid: { color: 'rgba(76,29,149,0.06)' }, ticks: { color: '#5c5670', precision: 0 } }
+                        x: { grid: { color: 'rgba(139, 92, 246, 0.12)' }, ticks: { color: '#9ca3af', font: { size: 11 } } },
+                        y: { grid: { color: 'rgba(139, 92, 246, 0.12)' }, ticks: { color: '#9ca3af', precision: 0 } }
                     }
                 }
             });
@@ -538,7 +673,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { position: 'right', labels: { color: '#1c1630', font: { size: 12 } } }
+                        legend: { position: 'right', labels: { color: '#f3f4f6', font: { size: 12 } } }
                     }
                 }
             });
