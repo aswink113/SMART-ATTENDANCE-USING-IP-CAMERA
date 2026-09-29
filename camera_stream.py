@@ -44,6 +44,9 @@ class CameraStreamManager:
         self.is_client_streaming = False
         self.last_client_frame_time = 0
 
+        # Spatial Heatmap Dwell Accumulation Matrix (64 x 48 grid)
+        self.heatmap_grid = np.zeros((48, 64), dtype=np.float32)
+
         self.start()
 
     def get_source_from_settings(self):
@@ -580,6 +583,14 @@ class CameraStreamManager:
 
                 current_seen_keys.add(track_key)
 
+                # Accumulate spatial dwell position density in heatmap grid
+                cx_norm = int(np.clip((fx + fw / 2.0) / float(frame_w) * 64.0, 0, 63))
+                cy_norm = int(np.clip((fy + fh / 2.0) / float(frame_h) * 48.0, 0, 47))
+                # Increment dwell density around center position
+                for dy in range(max(0, cy_norm - 2), min(48, cy_norm + 3)):
+                    for dx in range(max(0, cx_norm - 2), min(64, cx_norm + 3)):
+                        self.heatmap_grid[dy, dx] += 0.05
+
                 recognized_faces.append({
                     'emp_id': emp_id,
                     'emp_name': emp_name,
@@ -624,13 +635,45 @@ class CameraStreamManager:
                 ai_frame_count = 0
                 ai_start_time = time.time()
 
-            time.sleep(0.005)
+            time.sleep(0.01)
 
     def _draw_hud(self, frame):
-        """Draws HUD overlays, face boxes, hand markers, and alerts on a frame."""
+        """Draws HUD overlays, face boxes, hand markers, heatmap hot zones, and alerts on a frame."""
         annotated = frame.copy()
         h, w = annotated.shape[:2]
-        
+
+        # 0. Render Thermal Heatmap Density Overlay for High-Dwell Hot Zones
+        max_density = float(np.max(self.heatmap_grid))
+        if max_density > 0.5:
+            # Resize grid to frame resolution
+            grid_resized = cv2.resize(self.heatmap_grid, (w, h), interpolation=cv2.INTER_CUBIC)
+            grid_norm = np.uint8(np.clip(grid_resized / max_density * 255.0, 0, 255))
+            heatmap_color = cv2.applyColorMap(grid_norm, cv2.COLORMAP_JET)
+            
+            # Blend transparent heatmap overlay onto frame
+            mask = (grid_norm > 25).astype(np.uint8)
+            mask_3ch = cv2.merge([mask, mask, mask])
+            annotated = np.where(mask_3ch == 1, cv2.addWeighted(annotated, 0.65, heatmap_color, 0.35, 0), annotated)
+
+            # Find peak dwell coordinate position
+            max_pos = np.unravel_index(np.argmax(self.heatmap_grid), self.heatmap_grid.shape)
+            peak_y = int((max_pos[0] + 0.5) / 48.0 * h)
+            peak_x = int((max_pos[1] + 0.5) / 64.0 * w)
+
+            # Mark the position where people spend most time
+            cv2.drawMarker(annotated, (peak_x, peak_y), (0, 0, 255), cv2.MARKER_CROSS, 24, 3)
+            cv2.circle(annotated, (peak_x, peak_y), 18, (0, 0, 255), 2)
+            cv2.circle(annotated, (peak_x, peak_y), 32, (0, 255, 255), 1)
+
+            # Floating Hot Zone Tag
+            tag_text = "🔥 MOST FREQUENT / HIGHEST DWELL POSITION"
+            (tw, th), _ = cv2.getTextSize(tag_text, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 2)
+            tx = max(10, min(w - tw - 20, peak_x - int(tw / 2)))
+            ty = max(45, peak_y - 25)
+            cv2.rectangle(annotated, (tx - 6, ty - th - 6), (tx + tw + 6, ty + 6), (15, 23, 42), -1)
+            cv2.rectangle(annotated, (tx - 6, ty - th - 6), (tx + tw + 6, ty + 6), (0, 0, 255), 1)
+            cv2.putText(annotated, tag_text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 255), 2)
+
         with self.lock:
             detections = self.latest_detections.copy()
             punch_event = self.latest_punch_event
