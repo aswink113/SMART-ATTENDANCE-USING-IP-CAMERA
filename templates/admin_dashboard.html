@@ -74,6 +74,10 @@
                         <i data-lucide="map-pin"></i>
                         <span>Mark Location</span>
                     </button>
+                    <button class="btn btn-sm btn-secondary" onclick="resetHeatmap()" title="Clear and reset spatial dwell heatmap">
+                        <i data-lucide="flame"></i>
+                        <span>Reset Heatmap</span>
+                    </button>
                     <span class="badge-pill badge-outline" id="camera-fps-badge">FPS: --</span>
                     <button class="btn btn-sm btn-secondary" onclick="reloadStream()" title="Reload Stream">
                         <i data-lucide="refresh-cw"></i>
@@ -550,6 +554,18 @@
         const zoneName = prompt('Enter label for new target location zone:', 'Counter A');
         if (zoneName && zoneName.trim()) {
             setMarkedLocation(0.5, 0.5, zoneName.trim());
+        }
+    }
+
+    async function resetHeatmap() {
+        try {
+            const res = await fetch('/api/camera/reset_heatmap', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast('🔥 Spatial heatmap density reset successfully.', 'info');
+            }
+        } catch (err) {
+            console.error('Reset heatmap error:', err);
         }
     }
 

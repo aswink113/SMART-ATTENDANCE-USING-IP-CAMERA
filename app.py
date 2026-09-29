@@ -615,6 +615,15 @@ def api_marked_location_stats():
         'hourly_values': values
     })
 
+@app.route('/api/camera/reset_heatmap', methods=['POST'])
+@admin_required
+def api_reset_heatmap():
+    try:
+        camera_stream.heatmap_grid = np.zeros((48, 64), dtype=np.float32)
+        return jsonify({'success': True, 'message': 'Spatial heatmap density reset.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/attendance/export')
 @admin_required
 def api_export_excel():
