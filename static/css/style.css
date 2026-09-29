@@ -1,37 +1,37 @@
 /* NATVISION — light premium workspace */
 
 :root {
-    --bg-main: #f4f2f8;
-    --bg-surface: #ffffff;
-    --bg-card: #ffffff;
-    --bg-card-hover: #faf8ff;
-    --bg-muted: #f7f5fb;
-    --bg-ink: #09090b;
-    --border-color: rgba(76, 29, 149, 0.1);
-    --border-strong: rgba(76, 29, 149, 0.18);
-    --primary: #6d28d9;
-    --primary-hover: #5b21b6;
-    --primary-soft: rgba(109, 40, 217, 0.1);
-    --primary-glow: rgba(109, 40, 217, 0.22);
-    --success: #059669;
-    --success-soft: rgba(5, 150, 105, 0.1);
-    --warning: #d97706;
-    --warning-soft: rgba(217, 119, 6, 0.12);
-    --danger: #e11d48;
-    --danger-soft: rgba(225, 29, 72, 0.1);
-    --info: #0284c7;
-    --info-soft: rgba(2, 132, 199, 0.1);
-    --text-primary: #1c1630;
-    --text-secondary: #5c5670;
-    --text-muted: #8a849c;
+    --bg-main: #0b0a16;
+    --bg-surface: #121026;
+    --bg-card: rgba(22, 19, 46, 0.75);
+    --bg-card-hover: rgba(30, 26, 62, 0.9);
+    --bg-muted: #171433;
+    --bg-ink: #000000;
+    --border-color: rgba(139, 92, 246, 0.22);
+    --border-strong: rgba(139, 92, 246, 0.45);
+    --primary: #8b5cf6;
+    --primary-hover: #7c3aed;
+    --primary-soft: rgba(139, 92, 246, 0.18);
+    --primary-glow: rgba(139, 92, 246, 0.4);
+    --success: #10b981;
+    --success-soft: rgba(16, 185, 129, 0.15);
+    --warning: #f59e0b;
+    --warning-soft: rgba(245, 158, 11, 0.18);
+    --danger: #f43f5e;
+    --danger-soft: rgba(244, 63, 94, 0.15);
+    --info: #06b6d4;
+    --info-soft: rgba(6, 182, 212, 0.15);
+    --text-primary: #f3f4f6;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
     --sidebar-width: 268px;
     --navbar-height: 76px;
     --radius-xs: 8px;
     --radius-sm: 12px;
     --radius-md: 16px;
     --radius-lg: 22px;
-    --shadow-sm: 0 1px 2px rgba(28, 22, 48, 0.04), 0 8px 24px rgba(76, 29, 149, 0.05);
-    --shadow-md: 0 12px 40px rgba(76, 29, 149, 0.08);
+    --shadow-sm: 0 4px 20px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 12px 40px rgba(139, 92, 246, 0.2);
     --transition-fast: 0.15s ease;
     --transition-normal: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -41,8 +41,8 @@
 body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     background:
-        radial-gradient(900px 420px at 8% -10%, rgba(109, 40, 217, 0.12), transparent 55%),
-        radial-gradient(700px 380px at 100% 0%, rgba(14, 165, 233, 0.08), transparent 50%),
+        radial-gradient(900px 420px at 8% -10%, rgba(139, 92, 246, 0.25), transparent 55%),
+        radial-gradient(700px 380px at 100% 0%, rgba(6, 182, 212, 0.18), transparent 50%),
         var(--bg-main);
     color: var(--text-primary);
     line-height: 1.5;
@@ -61,20 +61,21 @@ body {
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(109, 40, 217, 0.22); border-radius: 99px; }
+::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.3); border-radius: 99px; }
 
 .app-layout { display: flex; min-height: 100vh; }
 
 .sidebar {
     width: var(--sidebar-width);
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(18, 16, 38, 0.85);
+    backdrop-filter: blur(16px);
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 100;
-    box-shadow: 8px 0 30px rgba(76, 29, 149, 0.04);
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.4);
 }
 
 .sidebar-header {
@@ -89,16 +90,17 @@ body {
 .login-card-logo {
     display: block;
     width: 100%;
-    background: #ffffff;
-    object-fit: cover;
+    background: #080711;
+    object-fit: contain;
     object-position: center;
-    border: 1px solid rgba(76, 29, 149, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.35);
+    box-shadow: 0 4px 18px rgba(124, 58, 237, 0.22);
 }
 
 .brand-logo {
-    height: 58px;
+    height: 60px;
     border-radius: 14px;
-    box-shadow: 0 8px 20px rgba(76, 29, 149, 0.08);
+    padding: 3px 6px;
 }
 
 .sidebar-nav {
@@ -178,7 +180,7 @@ body {
 
 .top-navbar {
     min-height: var(--navbar-height);
-    background: rgba(255, 255, 255, 0.86);
+    background: rgba(18, 16, 38, 0.82);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border-color);
     padding: 0.85rem 1.4rem;
@@ -205,26 +207,26 @@ body {
 .clock-pill, .status-indicator-pill, .gesture-pill {
     display: inline-flex; align-items: center; gap: 0.4rem;
     padding: 0.42rem 0.75rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700;
-    background: #fff; border: 1px solid var(--border-color);
+    background: rgba(26, 22, 54, 0.9); border: 1px solid var(--border-color);
 }
-.status-indicator-pill { color: var(--success); background: var(--success-soft); border-color: rgba(5, 150, 105, 0.18); }
-.gesture-pill { color: var(--primary); background: var(--primary-soft); border-color: rgba(109, 40, 217, 0.16); }
+.status-indicator-pill { color: var(--success); background: var(--success-soft); border-color: rgba(16, 185, 129, 0.3); }
+.gesture-pill { color: var(--primary); background: var(--primary-soft); border-color: rgba(139, 92, 246, 0.3); }
 .clock-pill { color: var(--text-secondary); }
 .gesture-pill i, .clock-pill i { width: 15px; height: 15px; }
 .system-time { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--text-primary); font-weight: 600; }
 
 .pulse-dot, .live-dot {
     width: 8px; height: 8px; border-radius: 50%; background: var(--success);
-    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.45); animation: pulseGlow 1.8s infinite;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); animation: pulseGlow 1.8s infinite;
 }
 .live-dot { background: var(--danger); width: 7px; height: 7px; }
 .bg-success { background-color: var(--success) !important; }
 .bg-warning { background-color: var(--warning) !important; }
 
 @keyframes pulseGlow {
-    0% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.45); }
-    70% { box-shadow: 0 0 0 7px rgba(5, 150, 105, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+    70% { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
 .flash-messages-container { padding: 1rem 1.4rem 0; }
@@ -234,16 +236,17 @@ body {
     border: 1px solid transparent; font-weight: 600;
 }
 .alert i { width: 16px; height: 16px; flex-shrink: 0; }
-.alert-danger { background: #fff1f2; border-color: #fecdd3; color: #be123c; }
-.alert-success { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
-.alert-warning { background: #fffbeb; border-color: #fde68a; color: #b45309; }
-.alert-info { background: #f0f9ff; border-color: #bae6fd; color: #0369a1; }
+.alert-danger { background: rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.3); color: #fda4af; }
+.alert-success { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7; }
+.alert-warning { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.3); color: #fcd34d; }
+.alert-info { background: rgba(6, 182, 212, 0.15); border-color: rgba(6, 182, 212, 0.3); color: #67e8f9; }
 .alert-close { margin-left: auto; background: none; border: none; color: inherit; font-size: 1.2rem; cursor: pointer; }
 
 .content-body { flex: 1; padding: 1.25rem 1.4rem 2rem; }
 
 .glass-card {
     background: var(--bg-card);
+    backdrop-filter: blur(12px);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
