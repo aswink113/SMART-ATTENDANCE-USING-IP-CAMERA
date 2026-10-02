@@ -44,8 +44,9 @@ class CameraStreamManager:
         self.is_client_streaming = False
         self.last_client_frame_time = 0
 
-        # Spatial Heatmap Dwell Accumulation Matrix (64 x 48 grid)
+        # Spatial Heatmap Dwell Accumulation Matrix (64 x 48 grid) & Display Toggle
         self.heatmap_grid = np.zeros((48, 64), dtype=np.float32)
+        self.enable_heatmap = True
 
         # Custom user-marked target location (normalized x, y between 0.0 - 1.0)
         self.marked_location = None  # tuple (x_norm, y_norm, label)
@@ -350,7 +351,7 @@ class CameraStreamManager:
             self.latest_raw_frame = frame_bgr
 
     def _capture_loop(self):
-        """Dedicated high-speed thread for hardware camera / RTSP frames."""
+        """Dedicated high-speed thread for hardware camera / RTSP frames with zero-latency buffer flushing."""
         source = self.get_source_from_settings()
         self.cap = self._open_camera(source)
 
@@ -373,7 +374,13 @@ class CameraStreamManager:
                 self.cap = self._open_camera(source)
                 continue
 
-            ret, frame = self.cap.read()
+            try:
+                ret, frame = self.cap.read()
+            except Exception as e:
+                ret = False
+                frame = None
+                print(f"[ERROR] Camera read exception: {e}")
+
             if not ret or frame is None:
                 fail_count += 1
                 if fail_count > 15:
@@ -399,7 +406,7 @@ class CameraStreamManager:
             with self.lock:
                 self.latest_raw_frame = frame
 
-            time.sleep(0.005) # Yield to prevent CPU thrashing
+            time.sleep(0.001) # Low yield sleep for minimal CPU overhead and max throughput
 
         if self.cap:
             try:
@@ -415,243 +422,283 @@ class CameraStreamManager:
         ai_start_time = time.time()
 
         while self.is_running:
-            raw_frame = None
-            with self.lock:
-                if self.latest_raw_frame is not None:
-                    raw_frame = self.latest_raw_frame.copy()
+            try:
+                raw_frame = None
+                with self.lock:
+                    if self.latest_raw_frame is not None:
+                        raw_frame = self.latest_raw_frame.copy()
 
-            if raw_frame is None:
-                time.sleep(0.03)
-                continue
+                if raw_frame is None:
+                    time.sleep(0.03)
+                    continue
 
-            # Downscale frame for fast AI inference (~480px width)
-            h, w = raw_frame.shape[:2]
-            target_w = 480
-            scale = 1.0
-            if w > target_w:
-                scale = target_w / float(w)
-                proc_frame = cv2.resize(raw_frame, (target_w, int(h * scale)), interpolation=cv2.INTER_LINEAR)
-            else:
-                proc_frame = raw_frame
+                # Downscale frame for fast AI inference (~480px width)
+                h, w = raw_frame.shape[:2]
+                target_w = 480
+                scale = 1.0
+                if w > target_w:
+                    scale = target_w / float(w)
+                    proc_frame = cv2.resize(raw_frame, (target_w, int(h * scale)), interpolation=cv2.INTER_LINEAR)
+                else:
+                    proc_frame = raw_frame
 
-            settings = get_camera_settings()
-            face_thresh = settings.get('face_threshold', 0.40)
-            gesture_thresh = settings.get('gesture_threshold', 0.50)
-            enable_machine = settings.get('enable_machine_detection', 1)
-            enable_dwell = settings.get('enable_dwell_tracking', 1)
-            enable_apparel = settings.get('enable_apparel_color', 1)
+                settings = get_camera_settings()
+                face_thresh = settings.get('face_threshold', 0.40)
+                gesture_thresh = settings.get('gesture_threshold', 0.50)
+                enable_machine = settings.get('enable_machine_detection', 1)
+                enable_dwell = settings.get('enable_dwell_tracking', 1)
+                enable_apparel = settings.get('enable_apparel_color', 1)
 
-            # 1. Face Detection & Machine Front Passage Tracking
-            detected_faces = face_engine.detect_faces(proc_frame)
-            recognized_faces = []
-            now_ts = time.time()
-            current_seen_keys = set()
+                # 1. Face Detection & Machine Front Passage Tracking
+                detected_faces = face_engine.detect_faces(proc_frame)
+                recognized_faces = []
+                now_ts = time.time()
+                current_seen_keys = set()
 
-            # Extract primary face bbox if present to enforce body-aligned hand raise
-            primary_face_bbox = None
-            if len(detected_faces) > 0:
-                best_f = max(detected_faces, key=lambda f: float(f[2] * f[3]))
-                primary_face_bbox = (float(best_f[0]), float(best_f[1]), float(best_f[2]), float(best_f[3]))
+                # Extract primary face bbox if present to enforce body-aligned hand raise
+                primary_face_bbox = None
+                if len(detected_faces) > 0:
+                    best_f = max(detected_faces, key=lambda f: float(f[2] * f[3]))
+                    primary_face_bbox = (float(best_f[0]), float(best_f[1]), float(best_f[2]), float(best_f[3]))
 
-            # 2. Gesture Detection on scaled frame with anatomical body alignment check
-            is_hand_raised, detected_hands = gesture_engine.detect_gesture(proc_frame, threshold=gesture_thresh, face_bbox=primary_face_bbox)
-            
-            # Rescale hand bounding boxes back to full coordinates
-            scaled_hands = []
-            for hand in detected_hands:
-                if hand.get('bbox'):
-                    hx, hy, hw, hh = hand['bbox']
-                    scaled_hands.append({
-                        'bbox': (int(hx / scale), int(hy / scale), int(hw / scale), int(hh / scale)),
-                        'gesture': hand['gesture'],
-                        'score': hand['score'],
-                        'is_raised': hand['is_raised']
+                # 2. Gesture Detection on scaled frame with anatomical body alignment check
+                is_hand_raised, detected_hands = gesture_engine.detect_gesture(proc_frame, threshold=gesture_thresh, face_bbox=primary_face_bbox)
+                
+                # Rescale hand bounding boxes back to full coordinates
+                scaled_hands = []
+                for hand in detected_hands:
+                    if hand.get('bbox'):
+                        hx, hy, hw, hh = hand['bbox']
+                        scaled_hands.append({
+                            'bbox': (int(hx / scale), int(hy / scale), int(hw / scale), int(hh / scale)),
+                            'gesture': hand['gesture'],
+                            'score': hand['score'],
+                            'is_raised': hand['is_raised']
+                        })
+
+                # Face recognition spatial cache to avoid redundant neural network inference on consecutive frames
+                if not hasattr(self, '_face_recog_cache'):
+                    self._face_recog_cache = []
+
+                new_cache = []
+
+                for face_data in detected_faces:
+                    # Rescale face data to match original frame
+                    rescaled_face = face_data.copy()
+                    rescaled_face[0] /= scale
+                    rescaled_face[1] /= scale
+                    rescaled_face[2] /= scale
+                    rescaled_face[3] /= scale
+                    if len(rescaled_face) >= 14: # Landmarks
+                        for k in range(4, 14, 2):
+                            rescaled_face[k] /= scale
+                            rescaled_face[k+1] /= scale
+
+                    fx, fy, fw, fh = int(rescaled_face[0]), int(rescaled_face[1]), int(rescaled_face[2]), int(rescaled_face[3])
+
+                    # Spatial IoU match against face recognition cache
+                    cached_match = None
+                    for c_entry in self._face_recog_cache:
+                        if now_ts - c_entry['ts'] < 0.30: # Cache valid for 300ms (~9 frames)
+                            cx, cy, cw, ch = c_entry['bbox']
+                            ix1, iy1 = max(fx, cx), max(fy, cy)
+                            ix2, iy2 = min(fx + fw, cx + cw), min(fy + fh, cy + ch)
+                            iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
+                            inter = iw * ih
+                            union = (fw * fh) + (cw * ch) - inter
+                            iou = inter / float(union) if union > 0 else 0.0
+                            if iou >= 0.55:
+                                cached_match = c_entry
+                                break
+
+                    if cached_match:
+                        emp_id = cached_match['emp_id']
+                        confidence = cached_match['confidence']
+                    else:
+                        emp_id, confidence, (fx, fy, fw, fh) = face_engine.recognize_face(raw_frame, rescaled_face, threshold=face_thresh)
+                        cached_match = {'bbox': (fx, fy, fw, fh), 'emp_id': emp_id, 'confidence': confidence, 'ts': now_ts}
+
+                    new_cache.append(cached_match)
+                    
+                    emp_name = "Unregistered"
+                    dept_name = ""
+                    if emp_id != "Unknown":
+                        emp_info = get_employee_by_id(emp_id)
+                        emp_name = emp_info['name'] if emp_info else emp_id
+                        dept_name = emp_info.get('department', '') if emp_info else ''
+
+                        # Check Gesture Punch Trigger
+                        if is_hand_raised:
+                            last_trig = self.last_punch_trigger_time.get(emp_id, 0)
+                            if now_ts - last_trig > 2.0:
+                                self.last_punch_trigger_time[emp_id] = now_ts
+                                timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                snapshot_filename = f"punch_{emp_id}_{timestamp_str}.jpg"
+                                snapshot_full_path = os.path.join(CAPTURES_DIR, snapshot_filename)
+                                snapshot_rel_path = f"captures/{snapshot_filename}"
+                                
+                                try:
+                                    cv2.imwrite(snapshot_full_path, raw_frame)
+                                except Exception:
+                                    pass
+
+                                punch_res = process_gesture_punch(
+                                    emp_id=emp_id,
+                                    snapshot_path=snapshot_rel_path,
+                                    confidence=confidence
+                                )
+                                self.latest_punch_event = punch_res
+                                self.latest_event_time = time.time()
+
+                    # Apparel Top Dress Color Analysis (if enabled)
+                    top_color = "Unknown"
+                    if enable_apparel:
+                        top_color = analyze_top_apparel_color(raw_frame, face_bbox=(fx, fy, fw, fh))
+
+                    # Machine Front Dwell Tracking (if enabled)
+                    # Compute bounding box for person (fx, fy, fw, fh)
+                    curr_box = (fx, fy, fw, fh)
+                    
+                    # Try to associate face/person with existing active track using identity OR spatial IoU overlap
+                    matched_key = None
+
+                    # 1. First priority match: match by registered employee identity (if recognized)
+                    if emp_id != "Unknown" and emp_id in self.active_person_tracks:
+                        matched_key = emp_id
+
+                    # 2. Second priority match: Spatial IoU / centroid proximity match for active tracks
+                    if matched_key is None:
+                        best_iou = 0.0
+                        for tkey, tr in self.active_person_tracks.items():
+                            prev_box = tr.get('bbox')
+                            if prev_box:
+                                # Calculate Intersection over Union (IoU) between bounding boxes
+                                px, py, pw, ph = prev_box
+                                ix1 = max(fx, px)
+                                iy1 = max(fy, py)
+                                ix2 = min(fx + fw, px + pw)
+                                iy2 = min(fy + fh, py + ph)
+                                iw = max(0, ix2 - ix1)
+                                ih = max(0, iy2 - iy1)
+                                inter_area = iw * ih
+                                box1_area = fw * fh
+                                box2_area = pw * ph
+                                union_area = box1_area + box2_area - inter_area
+                                iou = inter_area / float(union_area) if union_area > 0 else 0.0
+
+                                if iou > 0.25 and iou > best_iou:
+                                    best_iou = iou
+                                    matched_key = tkey
+
+                    # 3. Create or update track
+                    if matched_key is None:
+                        # New track key
+                        track_key = emp_id if emp_id != "Unknown" else f"anon_tr_{self.track_counter + 1}"
+                        self.track_counter += 1
+                        self.active_person_tracks[track_key] = {
+                            'track_id': self.track_counter,
+                            'emp_id': emp_id,
+                            'start_time': now_ts,
+                            'last_seen': now_ts,
+                            'dwell_seconds': 0.0,
+                            'logged': False,
+                            'dress_color': top_color,
+                            'bbox': curr_box
+                        }
+                    else:
+                        track_key = matched_key
+                        tr = self.active_person_tracks[matched_key]
+                        
+                        # Update identity if previously anonymous but now recognized
+                        if tr.get('emp_id', 'Unknown') == "Unknown" and emp_id != "Unknown":
+                            # Upgrade track key if emp_id is not already taken
+                            if emp_id not in self.active_person_tracks:
+                                self.active_person_tracks[emp_id] = tr
+                                del self.active_person_tracks[track_key]
+                                track_key = emp_id
+                            tr['emp_id'] = emp_id
+
+                        tr['last_seen'] = now_ts
+                        tr['dwell_seconds'] = now_ts - tr['start_time']
+                        tr['bbox'] = curr_box
+                        if top_color != "Unknown":
+                            tr['dress_color'] = top_color
+
+                    current_seen_keys.add(track_key)
+
+                    # Accumulate spatial dwell position density in heatmap grid covering full body region
+                    # Estimate full body bounding box from face position:
+                    # Head height approx 1/7 to 1/8 of total body height (approx 4x to 5x face height down, 1.8x face width across)
+                    body_x1 = max(0, int(fx - 0.4 * fw))
+                    body_y1 = max(0, int(fy))
+                    body_x2 = min(w, int(fx + 1.4 * fw))
+                    body_y2 = min(h, int(fy + 4.5 * fh))
+
+                    gx1 = int(np.clip((body_x1 / float(w)) * 64.0, 0, 63))
+                    gy1 = int(np.clip((body_y1 / float(h)) * 48.0, 0, 47))
+                    gx2 = int(np.clip((body_x2 / float(w)) * 64.0, 0, 63))
+                    gy2 = int(np.clip((body_y2 / float(h)) * 48.0, 0, 47))
+
+                    # Increment dwell density across full body grid region
+                    for dy in range(gy1, gy2 + 1):
+                        for dx in range(gx1, gx2 + 1):
+                            self.heatmap_grid[dy, dx] += 0.02
+
+                    # Check proximity to user custom marked location
+                    if self.marked_location:
+                        mx_norm, my_norm, _ = self.marked_location
+                        # Proximity radius check (approx 18% normalized distance)
+                        dist = np.hypot(person_cx_norm - mx_norm, person_cy_norm - my_norm)
+                        if dist <= 0.18:
+                            current_hour = datetime.now().strftime('%H:00')
+                            if current_hour in self.marked_location_hourly_counts:
+                                self.marked_location_hourly_counts[current_hour] += 1
+
+                    recognized_faces.append({
+                        'emp_id': emp_id,
+                        'emp_name': emp_name,
+                        'dept_name': dept_name,
+                        'confidence': confidence,
+                        'bbox': (fx, fy, fw, fh),
+                        'dress_color': top_color,
+                        'dwell_seconds': round(self.active_person_tracks[track_key]['dwell_seconds'], 1) if (enable_machine and enable_dwell and track_key in self.active_person_tracks) else 0.0
                     })
 
-            for face_data in detected_faces:
-                # Rescale face data to match original frame
-                rescaled_face = face_data.copy()
-                rescaled_face[0] /= scale
-                rescaled_face[1] /= scale
-                rescaled_face[2] /= scale
-                rescaled_face[3] /= scale
-                if len(rescaled_face) >= 14: # Landmarks
-                    for k in range(4, 14, 2):
-                        rescaled_face[k] /= scale
-                        rescaled_face[k+1] /= scale
-
-                emp_id, confidence, (fx, fy, fw, fh) = face_engine.recognize_face(raw_frame, rescaled_face, threshold=face_thresh)
-                
-                emp_name = "Unregistered"
-                dept_name = ""
-                if emp_id != "Unknown":
-                    emp_info = get_employee_by_id(emp_id)
-                    emp_name = emp_info['name'] if emp_info else emp_id
-                    dept_name = emp_info.get('department', '') if emp_info else ''
-
-                    # Check Gesture Punch Trigger
-                    if is_hand_raised:
-                        last_trig = self.last_punch_trigger_time.get(emp_id, 0)
-                        if now_ts - last_trig > 2.0:
-                            self.last_punch_trigger_time[emp_id] = now_ts
-                            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            snapshot_filename = f"punch_{emp_id}_{timestamp_str}.jpg"
-                            snapshot_full_path = os.path.join(CAPTURES_DIR, snapshot_filename)
-                            snapshot_rel_path = f"captures/{snapshot_filename}"
-                            
-                            try:
-                                cv2.imwrite(snapshot_full_path, raw_frame)
-                            except Exception:
-                                pass
-
-                            punch_res = process_gesture_punch(
-                                emp_id=emp_id,
-                                snapshot_path=snapshot_rel_path,
-                                confidence=confidence
-                            )
-                            self.latest_punch_event = punch_res
-                            self.latest_event_time = time.time()
-
-                # Apparel Top Dress Color Analysis (if enabled)
-                top_color = "Unknown"
-                if enable_apparel:
-                    top_color = analyze_top_apparel_color(raw_frame, face_bbox=(fx, fy, fw, fh))
-
-                # Machine Front Dwell Tracking (if enabled)
-                # Compute bounding box for person (fx, fy, fw, fh)
-                curr_box = (fx, fy, fw, fh)
-                
-                # Try to associate face/person with existing active track using identity OR spatial IoU overlap
-                matched_key = None
-
-                # 1. First priority match: match by registered employee identity (if recognized)
-                if emp_id != "Unknown" and emp_id in self.active_person_tracks:
-                    matched_key = emp_id
-
-                # 2. Second priority match: Spatial IoU / centroid proximity match for active tracks
-                if matched_key is None:
-                    best_iou = 0.0
+                # Cleanup expired tracks & log completed machine front passage events
+                expired_keys = []
+                if enable_machine and enable_dwell:
                     for tkey, tr in self.active_person_tracks.items():
-                        prev_box = tr.get('bbox')
-                        if prev_box:
-                            # Calculate Intersection over Union (IoU) between bounding boxes
-                            px, py, pw, ph = prev_box
-                            ix1 = max(fx, px)
-                            iy1 = max(fy, py)
-                            ix2 = min(fx + fw, px + pw)
-                            iy2 = min(fy + fh, py + ph)
-                            iw = max(0, ix2 - ix1)
-                            ih = max(0, iy2 - iy1)
-                            inter_area = iw * ih
-                            box1_area = fw * fh
-                            box2_area = pw * ph
-                            union_area = box1_area + box2_area - inter_area
-                            iou = inter_area / float(union_area) if union_area > 0 else 0.0
+                        if now_ts - tr['last_seen'] > 4.0: # Person left front of camera (4.0s tolerance for momentary face occlusion/turning away)
+                            expired_keys.append(tkey)
+                            dwell_duration = tr['last_seen'] - tr['start_time']
+                            if dwell_duration >= 1.0 and not tr['logged']:
+                                emp_label = tr.get('emp_id', 'Unknown')
+                                if emp_label == 'Unknown' and tkey.startswith('anon_'):
+                                    emp_label = 'Unknown'
+                                log_machine_pass_event(emp_label, tr['track_id'], dwell_duration, tr['dress_color'])
+                                tr['logged'] = True
 
-                            if iou > 0.25 and iou > best_iou:
-                                best_iou = iou
-                                matched_key = tkey
+                    for ekey in expired_keys:
+                        del self.active_person_tracks[ekey]
 
-                # 3. Create or update track
-                if matched_key is None:
-                    # New track key
-                    track_key = emp_id if emp_id != "Unknown" else f"anon_tr_{self.track_counter + 1}"
-                    self.track_counter += 1
-                    self.active_person_tracks[track_key] = {
-                        'track_id': self.track_counter,
-                        'emp_id': emp_id,
-                        'start_time': now_ts,
-                        'last_seen': now_ts,
-                        'dwell_seconds': 0.0,
-                        'logged': False,
-                        'dress_color': top_color,
-                        'bbox': curr_box
+                # Update cached detections
+                with self.lock:
+                    self.latest_detections = {
+                        'faces': recognized_faces,
+                        'hands': scaled_hands,
+                        'is_hand_raised': is_hand_raised,
+                        'timestamp': time.time()
                     }
-                else:
-                    track_key = matched_key
-                    tr = self.active_person_tracks[matched_key]
-                    
-                    # Update identity if previously anonymous but now recognized
-                    if tr.get('emp_id', 'Unknown') == "Unknown" and emp_id != "Unknown":
-                        # Upgrade track key if emp_id is not already taken
-                        if emp_id not in self.active_person_tracks:
-                            self.active_person_tracks[emp_id] = tr
-                            del self.active_person_tracks[track_key]
-                            track_key = emp_id
-                        tr['emp_id'] = emp_id
 
-                    tr['last_seen'] = now_ts
-                    tr['dwell_seconds'] = now_ts - tr['start_time']
-                    tr['bbox'] = curr_box
-                    if top_color != "Unknown":
-                        tr['dress_color'] = top_color
-
-                current_seen_keys.add(track_key)
-
-                # Accumulate spatial dwell position density in heatmap grid
-                person_cx_norm = (fx + fw / 2.0) / float(frame_w)
-                person_cy_norm = (fy + fh / 2.0) / float(frame_h)
-
-                cx_grid = int(np.clip(person_cx_norm * 64.0, 0, 63))
-                cy_grid = int(np.clip(person_cy_norm * 48.0, 0, 47))
-                # Increment dwell density around center position
-                for dy in range(max(0, cy_grid - 2), min(48, cy_grid + 3)):
-                    for dx in range(max(0, cx_grid - 2), min(64, cx_grid + 3)):
-                        self.heatmap_grid[dy, dx] += 0.05
-
-                # Check proximity to user custom marked location
-                if self.marked_location:
-                    mx_norm, my_norm, _ = self.marked_location
-                    # Proximity radius check (approx 18% normalized distance)
-                    dist = np.hypot(person_cx_norm - mx_norm, person_cy_norm - my_norm)
-                    if dist <= 0.18:
-                        current_hour = datetime.now().strftime('%H:00')
-                        if current_hour in self.marked_location_hourly_counts:
-                            self.marked_location_hourly_counts[current_hour] += 1
-
-                recognized_faces.append({
-                    'emp_id': emp_id,
-                    'emp_name': emp_name,
-                    'dept_name': dept_name,
-                    'confidence': confidence,
-                    'bbox': (fx, fy, fw, fh),
-                    'dress_color': top_color,
-                    'dwell_seconds': round(self.active_person_tracks[track_key]['dwell_seconds'], 1) if (enable_machine and enable_dwell and track_key in self.active_person_tracks) else 0.0
-                })
-
-            # Cleanup expired tracks & log completed machine front passage events
-            expired_keys = []
-            if enable_machine and enable_dwell:
-                for tkey, tr in self.active_person_tracks.items():
-                    if now_ts - tr['last_seen'] > 4.0: # Person left front of camera (4.0s tolerance for momentary face occlusion/turning away)
-                        expired_keys.append(tkey)
-                        dwell_duration = tr['last_seen'] - tr['start_time']
-                        if dwell_duration >= 1.0 and not tr['logged']:
-                            emp_label = tr.get('emp_id', 'Unknown')
-                            if emp_label == 'Unknown' and tkey.startswith('anon_'):
-                                emp_label = 'Unknown'
-                            log_machine_pass_event(emp_label, tr['track_id'], dwell_duration, tr['dress_color'])
-                            tr['logged'] = True
-
-                for ekey in expired_keys:
-                    del self.active_person_tracks[ekey]
-
-            # Update cached detections
-            with self.lock:
-                self.latest_detections = {
-                    'faces': recognized_faces,
-                    'hands': scaled_hands,
-                    'is_hand_raised': is_hand_raised,
-                    'timestamp': time.time()
-                }
-
-            # Calculate AI inference FPS
-            ai_frame_count += 1
-            ai_elapsed = time.time() - ai_start_time
-            if ai_elapsed >= 1.0:
-                self.ai_fps = round(ai_frame_count / ai_elapsed, 1)
-                ai_frame_count = 0
-                ai_start_time = time.time()
+                # Calculate AI inference FPS
+                ai_frame_count += 1
+                ai_elapsed = time.time() - ai_start_time
+                if ai_elapsed >= 1.0:
+                    self.ai_fps = round(ai_frame_count / ai_elapsed, 1)
+                    ai_frame_count = 0
+                    ai_start_time = time.time()
+            except Exception as e:
+                print(f"AI Worker loop exception: {e}")
 
             time.sleep(0.01)
 
@@ -660,18 +707,18 @@ class CameraStreamManager:
         annotated = frame.copy()
         h, w = annotated.shape[:2]
 
-        # 0. Render Thermal Heatmap Density Overlay for High-Dwell Hot Zones
+        # 0. Render Thermal Heatmap Density Overlay for High-Dwell Hot Zones (if enabled)
         max_density = float(np.max(self.heatmap_grid))
-        if max_density > 0.5:
-            # Resize grid to frame resolution
-            grid_resized = cv2.resize(self.heatmap_grid, (w, h), interpolation=cv2.INTER_CUBIC)
+        if self.enable_heatmap and max_density > 0.5:
+            # Resize grid to frame resolution using fast LINEAR interpolation
+            grid_resized = cv2.resize(self.heatmap_grid, (w, h), interpolation=cv2.INTER_LINEAR)
             grid_norm = np.uint8(np.clip(grid_resized / max_density * 255.0, 0, 255))
-            heatmap_color = cv2.applyColorMap(grid_norm, cv2.COLORMAP_JET)
             
-            # Blend transparent heatmap overlay onto frame
-            mask = (grid_norm > 25).astype(np.uint8)
-            mask_3ch = cv2.merge([mask, mask, mask])
-            annotated = np.where(mask_3ch == 1, cv2.addWeighted(annotated, 0.65, heatmap_color, 0.35, 0), annotated)
+            mask = grid_norm > 25
+            if np.any(mask):
+                heatmap_color = cv2.applyColorMap(grid_norm, cv2.COLORMAP_JET)
+                # Fast in-place alpha blending on masked region only
+                annotated[mask] = cv2.addWeighted(annotated, 0.65, heatmap_color, 0.35, 0)[mask]
 
             # Find peak dwell coordinate position
             max_pos = np.unravel_index(np.argmax(self.heatmap_grid), self.heatmap_grid.shape)
@@ -787,6 +834,7 @@ class CameraStreamManager:
         render_start_time = time.time()
 
         while True:
+            t0 = time.time()
             raw_frame = None
             with self.lock:
                 if self.latest_raw_frame is not None:
@@ -802,7 +850,7 @@ class CameraStreamManager:
                 ret, jpeg = cv2.imencode('.jpg', placeholder, [cv2.IMWRITE_JPEG_QUALITY, 60])
             else:
                 annotated = self._draw_hud(raw_frame)
-                ret, jpeg = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                ret, jpeg = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 65])
 
             render_frame_count += 1
             elapsed = time.time() - render_start_time
@@ -815,7 +863,10 @@ class CameraStreamManager:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
             
-            time.sleep(0.033) # 30 FPS stream cadence
+            # Precise 30 FPS dynamic cadence sleep calculation
+            loop_duration = time.time() - t0
+            sleep_time = max(0.001, 0.0333 - loop_duration)
+            time.sleep(sleep_time)
 
 # Global Camera Stream Singleton
 camera_stream = CameraStreamManager()

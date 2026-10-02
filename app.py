@@ -277,7 +277,17 @@ def api_camera_mode():
 @app.route('/api/admin/stats')
 @admin_required
 def api_admin_stats():
-    return jsonify(get_admin_dashboard_stats())
+    stats = get_admin_dashboard_stats()
+    today_records = get_today_attendance()
+    recent_punches = get_recent_punch_logs(15)
+    machine_analytics = get_machine_analytics_summary()
+    return jsonify({
+        'success': True,
+        'stats': stats,
+        'today_records': today_records,
+        'recent_punches': recent_punches,
+        'machine_analytics': machine_analytics
+    })
 
 @app.route('/api/employee/add', methods=['POST'])
 @admin_required
@@ -621,6 +631,20 @@ def api_reset_heatmap():
     try:
         camera_stream.heatmap_grid = np.zeros((48, 64), dtype=np.float32)
         return jsonify({'success': True, 'message': 'Spatial heatmap density reset.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/camera/toggle_heatmap', methods=['POST'])
+@admin_required
+def api_toggle_heatmap():
+    try:
+        data = request.get_json(silent=True) or {}
+        if 'enabled' in data:
+            camera_stream.enable_heatmap = bool(data['enabled'])
+        else:
+            camera_stream.enable_heatmap = not camera_stream.enable_heatmap
+        state_str = "ON" if camera_stream.enable_heatmap else "OFF"
+        return jsonify({'success': True, 'enabled': camera_stream.enable_heatmap, 'message': f'Full-body heatmap display turned {state_str}.'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 

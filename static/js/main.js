@@ -41,8 +41,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const camStatusText = document.getElementById('camera-status-text');
+            const statusPill = document.querySelector('.status-indicator-pill');
             if (camStatusText && data.camera_status) {
-                camStatusText.textContent = `AI Camera ${data.camera_status}`;
+                const isOnline = data.camera_status.includes('Online');
+                camStatusText.textContent = isOnline ? `AI Camera ${data.camera_status}` : `AI Camera Offline`;
+                if (statusPill) {
+                    statusPill.style.background = isOnline ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                    statusPill.style.color = isOnline ? '#4ade80' : '#f87171';
+                    statusPill.style.borderColor = isOnline ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                }
             }
 
             // Check for new punch event

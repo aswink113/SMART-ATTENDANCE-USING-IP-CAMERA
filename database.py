@@ -5,8 +5,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from config import DB_PATH, DEFAULT_COOLDOWN_MINUTES, DEFAULT_FACE_THRESHOLD, DEFAULT_GESTURE_THRESHOLD
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute('PRAGMA journal_mode=WAL;')
+        conn.execute('PRAGMA synchronous=NORMAL;')
+    except Exception:
+        pass
     return conn
 
 def init_db():

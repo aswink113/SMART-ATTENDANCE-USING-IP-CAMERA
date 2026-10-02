@@ -74,6 +74,10 @@
                         <i data-lucide="map-pin"></i>
                         <span>Mark Location</span>
                     </button>
+                    <button class="btn btn-sm btn-warning" id="btn-toggle-heatmap" onclick="toggleHeatmapDisplay()" title="Turn full body spatial heatmap ON / OFF">
+                        <i data-lucide="eye" id="heatmap-toggle-icon"></i>
+                        <span id="heatmap-toggle-text">Heatmap: ON</span>
+                    </button>
                     <button class="btn btn-sm btn-secondary" onclick="resetHeatmap()" title="Clear and reset spatial dwell heatmap">
                         <i data-lucide="flame"></i>
                         <span>Reset Heatmap</span>
@@ -89,7 +93,7 @@
             </div>
 
             <div class="stream-container" id="stream-container" style="position: relative; cursor: crosshair;" onclick="handleStreamContainerClick(event)">
-                <img src="{{ url_for('video_feed') }}" id="live-camera-img" alt="Live Camera Feed" class="stream-img">
+                <img src="{{ url_for('video_feed') }}" id="live-camera-img" alt="Live Camera Feed" class="stream-img" onerror="setTimeout(reloadStream, 2000)">
                 
                 <!-- Hidden Client Video & Canvas for Browser Streaming -->
                 <video id="client-stream-video" autoplay playsinline muted style="display:none;"></video>
@@ -193,9 +197,13 @@
         <div class="card-header">
             <div class="card-header-left">
                 <i data-lucide="calendar-check" class="icon-accent"></i>
-                <h4>Today's Attendance Master Log ({{ today_records | length }} records)</h4>
+                <h4>Today's Attendance Master Log (<span id="today-record-count">{{ today_records | length }}</span> records)</h4>
             </div>
             <div class="card-header-right">
+                <div class="search-box-sm" style="display: flex; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 10px; padding: 4px 10px; gap: 6px;">
+                    <i data-lucide="search" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
+                    <input type="text" id="attendance-search-input" placeholder="Filter employee or dept..." onkeyup="filterTodayTable()" style="background: none; border: none; color: #fff; font-size: 0.82rem; outline: none; width: 170px;">
+                </div>
                 <a href="{{ url_for('api_export_excel') }}" class="btn btn-sm btn-success">
                     <i data-lucide="file-spreadsheet"></i>
                     <span>Excel</span>
@@ -298,27 +306,27 @@
         <div class="machine-stats-grid">
             <div class="glass-card mini-stat stat-primary">
                 <span class="stat-label">Passed the camera</span>
-                <h3 class="stat-value">{{ machine_analytics.total_passed_today }}</h3>
+                <h3 class="stat-value" id="m-stat-passed">{{ machine_analytics.total_passed_today }}</h3>
                 <span class="stat-subtext">People detected today</span>
             </div>
             <div class="glass-card mini-stat stat-warning">
                 <span class="stat-label">Longer dwell</span>
-                <h3 class="stat-value">{{ machine_analytics.high_dwell_count }}</h3>
+                <h3 class="stat-value" id="m-stat-high-dwell">{{ machine_analytics.high_dwell_count }}</h3>
                 <span class="stat-subtext">Stayed in frame over 5 seconds</span>
             </div>
             <div class="glass-card mini-stat stat-success">
                 <span class="stat-label">Average dwell</span>
-                <h3 class="stat-value">{{ machine_analytics.avg_dwell_sec }}s</h3>
+                <h3 class="stat-value" id="m-stat-avg-dwell">{{ machine_analytics.avg_dwell_sec }}s</h3>
                 <span class="stat-subtext">Average presence duration</span>
             </div>
             <div class="glass-card mini-stat stat-info">
                 <span class="stat-label">Peak hour</span>
-                <h4 class="stat-value">{{ machine_analytics.peak_hour }}</h4>
+                <h4 class="stat-value" id="m-stat-peak-hour">{{ machine_analytics.peak_hour }}</h4>
                 <span class="stat-subtext">Highest crowd traffic</span>
             </div>
             <div class="glass-card mini-stat">
                 <span class="stat-label">Quiet hour</span>
-                <h4 class="stat-value">{{ machine_analytics.low_hour }}</h4>
+                <h4 class="stat-value" id="m-stat-low-hour">{{ machine_analytics.low_hour }}</h4>
                 <span class="stat-subtext">Lowest crowd traffic</span>
             </div>
         </div>
@@ -569,6 +577,32 @@
         }
     }
 
+    async function toggleHeatmapDisplay() {
+        try {
+            const res = await fetch('/api/camera/toggle_heatmap', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                const btnText = document.getElementById('heatmap-toggle-text');
+                const btnIcon = document.getElementById('heatmap-toggle-icon');
+                const btn = document.getElementById('btn-toggle-heatmap');
+                if (data.enabled) {
+                    if (btnText) btnText.textContent = 'Heatmap: ON';
+                    if (btn) { btn.className = 'btn btn-sm btn-warning'; }
+                    if (btnIcon) btnIcon.setAttribute('data-lucide', 'eye');
+                    showToast('👁️ Full-body heatmap overlay turned ON.', 'info');
+                } else {
+                    if (btnText) btnText.textContent = 'Heatmap: OFF';
+                    if (btn) { btn.className = 'btn btn-sm btn-secondary'; }
+                    if (btnIcon) btnIcon.setAttribute('data-lucide', 'eye-off');
+                    showToast('🙈 Full-body heatmap overlay turned OFF.', 'warning');
+                }
+                if (window.lucide) lucide.createIcons();
+            }
+        } catch (err) {
+            console.error('Toggle heatmap error:', err);
+        }
+    }
+
     async function updateMarkedLocationChart() {
         try {
             const res = await fetch('/api/camera/marked_location_stats');
@@ -627,17 +661,168 @@
         }
     }
 
-    // Initialize Machine Passage Analytics Charts
+    // ---------------- Real-time Auto Sync Dashboard Data ----------------
+    function filterTodayTable() {
+        const input = document.getElementById('attendance-search-input');
+        if (!input) return;
+        const filter = input.value.toLowerCase();
+        const tbody = document.getElementById('today-attendance-tbody');
+        if (!tbody) return;
+        const rows = tbody.getElementsByTagName('tr');
+
+        for (let i = 0; i < rows.length; i++) {
+            const rowText = rows[i].innerText.toLowerCase();
+            if (rowText.includes(filter)) {
+                rows[i].style.display = '';
+            } else {
+                rows[i].style.display = 'none';
+            }
+        }
+    }
+
+    async function fetchDashboardRealtimeStats() {
+        try {
+            const res = await fetch('/api/admin/stats');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data.success) return;
+
+            // 1. Update KPI stats
+            const s = data.stats;
+            if (s) {
+                const elTotal = document.getElementById('stat-total');
+                const elPresent = document.getElementById('stat-present');
+                const elIn = document.getElementById('stat-in');
+                const elOut = document.getElementById('stat-out');
+                if (elTotal) elTotal.textContent = s.total_employees;
+                if (elPresent) elPresent.textContent = s.present_today;
+                if (elIn) elIn.textContent = s.currently_in;
+                if (elOut) elOut.textContent = s.punched_out;
+            }
+
+            // 2. Update Activity feed list if new punches arrived
+            if (data.recent_punches && data.recent_punches.length > 0) {
+                const feedContainer = document.getElementById('activity-feed-list');
+                if (feedContainer) {
+                    let html = '';
+                    data.recent_punches.forEach(punch => {
+                        const timeStr = punch.timestamp.includes(' ') ? punch.timestamp.split(' ')[1] : punch.timestamp;
+                        const badgeClass = punch.punch_type === 'IN' ? 'badge-success' : (punch.punch_type === 'OUT' ? 'badge-info' : 'badge-warning');
+                        const iconName = punch.punch_type === 'IN' ? 'log-in' : (punch.punch_type === 'OUT' ? 'log-out' : 'clock');
+                        const confStr = punch.confidence ? `${(punch.confidence * 100).toFixed(1)}% match` : '';
+                        const snapHtml = punch.snapshot_path ? `<div class="feed-thumb-wrap"><img src="/${punch.snapshot_path}" alt="Snap" class="feed-thumb" onclick="previewImage(this.src)"></div>` : '';
+
+                        html += `
+                            <div class="feed-item">
+                                <div class="feed-badge feed-badge-${punch.punch_type.toLowerCase()}">
+                                    <i data-lucide="${iconName}"></i>
+                                </div>
+                                <div class="feed-content">
+                                    <div class="feed-top">
+                                        <strong>${punch.name}</strong>
+                                        <span class="feed-time">${timeStr}</span>
+                                    </div>
+                                    <div class="feed-bottom">
+                                        <span class="badge-pill ${badgeClass}">${punch.punch_type}</span>
+                                        <span class="feed-dept">${punch.department || ''}</span>
+                                        ${confStr ? `<span class="feed-conf">${confStr}</span>` : ''}
+                                    </div>
+                                </div>
+                                ${snapHtml}
+                            </div>
+                        `;
+                    });
+                    feedContainer.innerHTML = html;
+                }
+            }
+
+            // 3. Update Master Attendance Log Table
+            if (data.today_records) {
+                const tbody = document.getElementById('today-attendance-tbody');
+                const countBadge = document.getElementById('today-record-count');
+                if (countBadge) countBadge.textContent = data.today_records.length;
+
+                if (tbody) {
+                    if (data.today_records.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted">No attendance entries recorded for today yet.</td></tr>`;
+                    } else {
+                        let rowsHtml = '';
+                        data.today_records.forEach(r => {
+                            const statusBadge = r.status === 'COMPLETED' ? '<span class="badge-status badge-success">Completed (Out)</span>' : (r.status === 'IN_PROGRESS' ? '<span class="badge-status badge-warning">In Office</span>' : `<span class="badge-status badge-secondary">${r.status}</span>`);
+                            const inSnap = r.in_snapshot ? `<img src="/${r.in_snapshot}" alt="IN" class="table-thumb" title="IN Snapshot" onclick="previewImage(this.src)">` : '';
+                            const outSnap = r.out_snapshot ? `<img src="/${r.out_snapshot}" alt="OUT" class="table-thumb" title="OUT Snapshot" onclick="previewImage(this.src)">` : '';
+
+                            rowsHtml += `
+                                <tr>
+                                    <td>
+                                        <div class="employee-cell">
+                                            <div class="cell-avatar"><span>${(r.name[0] || 'E').toUpperCase()}</span></div>
+                                            <div class="cell-text">
+                                                <strong>${r.name}</strong>
+                                                <span class="emp-code">${r.emp_id}</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="dept-badge">${r.department || 'General'}</span></td>
+                                    <td>${r.date}</td>
+                                    <td><span class="time-badge in-time"><i data-lucide="log-in"></i> ${r.in_time || '--:--:--'}</span></td>
+                                    <td><span class="time-badge out-time"><i data-lucide="log-out"></i> ${r.out_time || '--:--:--'}</span></td>
+                                    <td><strong>${r.total_hours || 0} hrs</strong></td>
+                                    <td>${statusBadge}</td>
+                                    <td><div class="snap-thumbs">${inSnap}${outSnap}</div></td>
+                                </tr>
+                            `;
+                        });
+                        tbody.innerHTML = rowsHtml;
+                        filterTodayTable(); // Maintain active filter
+                    }
+                }
+            }
+
+            // 4. Update Machine Passage & Detailed Analytics KPIs + Charts
+            if (data.machine_analytics) {
+                const ma = data.machine_analytics;
+                const elPassed = document.getElementById('m-stat-passed');
+                const elHighDwell = document.getElementById('m-stat-high-dwell');
+                const elAvgDwell = document.getElementById('m-stat-avg-dwell');
+                const elPeakHour = document.getElementById('m-stat-peak-hour');
+                const elLowHour = document.getElementById('m-stat-low-hour');
+                if (elPassed) elPassed.textContent = ma.total_passed_today;
+                if (elHighDwell) elHighDwell.textContent = ma.high_dwell_count;
+                if (elAvgDwell) elAvgDwell.textContent = (ma.avg_dwell_sec || 0) + 's';
+                if (elPeakHour) elPeakHour.textContent = ma.peak_hour || 'N/A';
+                if (elLowHour) elLowHour.textContent = ma.low_hour || 'N/A';
+
+                if (window.hourlyChartInst && ma.hourly_chart_labels && ma.hourly_chart_data) {
+                    window.hourlyChartInst.data.labels = ma.hourly_chart_labels;
+                    window.hourlyChartInst.data.datasets[0].data = ma.hourly_chart_data;
+                    window.hourlyChartInst.update('none');
+                }
+                if (window.apparelChartInst && ma.color_labels && ma.color_counts) {
+                    window.apparelChartInst.data.labels = ma.color_labels;
+                    window.apparelChartInst.data.datasets[0].data = ma.color_counts;
+                    window.apparelChartInst.update('none');
+                }
+            }
+
+            if (window.lucide) lucide.createIcons();
+        } catch (err) {
+            console.error('Error fetching dashboard stats:', err);
+        }
+    }
+
+    // Initialize Machine Passage Analytics Charts & Real-time polling
     document.addEventListener('DOMContentLoaded', function() {
         updateMarkedLocationChart();
         setInterval(updateMarkedLocationChart, 5000); // Poll chart updates every 5 seconds
+        setInterval(fetchDashboardRealtimeStats, 3000); // Poll live stats & punch activity every 3 seconds
 
         // 1. Hourly Traffic Peak/Low Bar Chart
         const hourlyCtx = document.getElementById('hourlyTrafficChart');
         if (hourlyCtx) {
             const hourlyLabels = {{ machine_analytics.hourly_chart_labels | tojson }};
             const hourlyData = {{ machine_analytics.hourly_chart_data | tojson }};
-            new Chart(hourlyCtx, {
+            window.hourlyChartInst = new Chart(hourlyCtx, {
                 type: 'bar',
                 data: {
                     labels: hourlyLabels,
@@ -674,7 +859,7 @@
             };
             const bgColors = colorLabels.map(l => colorPalette[l] || '#6366f1');
 
-            new Chart(colorCtx, {
+            window.apparelChartInst = new Chart(colorCtx, {
                 type: 'doughnut',
                 data: {
                     labels: colorLabels,
