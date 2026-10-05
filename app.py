@@ -202,6 +202,38 @@ def api_day_by_day_analytics():
     return jsonify({'success': True, 'data': analytics})
 
 
+@app.route('/admin/analytics')
+@admin_required
+def admin_analytics():
+    today_filter = request.args.get('today', 'false').lower() == 'true'
+    today_str = date.today().strftime('%Y-%m-%d')
+    
+    if today_filter:
+        start_date = today_str
+        end_date = today_str
+    else:
+        start_date = request.args.get('start_date', (date.today() - timedelta(days=7)).strftime('%Y-%m-%d'))
+        end_date = request.args.get('end_date', today_str)
+        
+    department = request.args.get('department', 'All')
+    employees = get_all_employees()
+    departments = sorted(list(set(e.get('department', 'General') for e in employees if e.get('department'))))
+    
+    day_analytics = get_day_by_day_analytics(start_date=start_date, end_date=end_date, department=department)
+    machine_analytics = get_machine_analytics_summary()
+    
+    return render_template(
+        'admin_analytics.html',
+        start_date=start_date,
+        end_date=end_date,
+        department=department,
+        departments=departments,
+        today_filter=today_filter,
+        day_analytics=day_analytics,
+        machine_analytics=machine_analytics,
+        active_page='analytics'
+    )
+
 @app.route('/admin/camera')
 @admin_required
 def admin_camera():

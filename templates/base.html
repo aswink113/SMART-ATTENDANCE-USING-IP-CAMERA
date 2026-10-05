@@ -38,6 +38,10 @@
                         <i data-lucide="clipboard-check"></i>
                         <span>Attendance Logs</span>
                     </a>
+                    <a href="{{ url_for('admin_analytics') }}" class="nav-link {% if active_page == 'analytics' %}active{% endif %}">
+                        <i data-lucide="bar-chart-3"></i>
+                        <span>Analytics</span>
+                    </a>
                     <a href="{{ url_for('admin_camera') }}" class="nav-link {% if active_page == 'camera' %}active{% endif %}">
                         <i data-lucide="video"></i>
                         <span>Camera Settings</span>

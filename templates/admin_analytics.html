@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics · NATVISION{% endblock %}
+{% block header_title %}System Analytics & Pass-Through Reports{% endblock %}
+
+{% block content %}
+<div class="analytics-page">
+    <!-- Filter & Action Card -->
+    <div class="glass-card filter-card">
+        <form method="GET" action="{{ url_for('admin_analytics') }}" class="filter-form" id="analytics-filter-form">
+            <input type="hidden" name="today" id="today_input" value="{{ 'true' if today_filter else 'false' }}">
+            <div class="filter-inputs">
+                <div class="form-group mb-0">
+                    <label for="start_date">From Date</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}" {% if today_filter %}disabled{% endif %}>
+                </div>
+                <div class="form-group mb-0">
+                    <label for="end_date">To Date</label>
+                    <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}" {% if today_filter %}disabled{% endif %}>
+                </div>
+                <div class="form-group mb-0">
+                    <label for="department">Department</label>
+                    <select id="department" name="department" class="form-control">
+                        <option value="All" {% if department == 'All' %}selected{% endif %}>All Departments</option>
+                        {% for dept in departments %}
+                            <option value="{{ dept }}" {% if department == dept %}selected{% endif %}>{{ dept }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-actions">
+                <button type="button" class="btn {% if today_filter %}btn-primary{% else %}btn-secondary{% endif %}" id="btn-today-filter" onclick="toggleTodayFilter()">
+                    <i data-lucide="calendar-check"></i>
+                    <span>Today Only</span>
+                </button>
+                <button type="submit" class="btn btn-secondary">
+                    <i data-lucide="filter"></i>
+                    <span>Apply Filter</span>
+                </button>
+                <a href="{{ url_for('api_export_excel', start_date=start_date, end_date=end_date, department=department) }}" class="btn btn-success">
+                    <i data-lucide="file-spreadsheet"></i>
+                    <span>Export Excel</span>
+                </a>
+                <a href="{{ url_for('api_export_csv', start_date=start_date, end_date=end_date, department=department) }}" class="btn btn-secondary">
+                    <i data-lucide="download"></i>
+                    <span>Export CSV</span>
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Key Analytics Metric Cards -->
+    <div class="stats-cards-grid mt-2">
+        <div class="glass-card stat-card stat-primary">
+            <div class="stat-icon-wrap">
+                <i data-lucide="users"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Unique Employees</span>
+                <h3 class="stat-value">{{ day_analytics.summary.unique_employees }}</h3>
+                <span class="stat-subtext">Active in selected period</span>
+            </div>
+        </div>
+        <div class="glass-card stat-card stat-success">
+            <div class="stat-icon-wrap">
+                <i data-lucide="clipboard-check"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Total Punch Records</span>
+                <h3 class="stat-value">{{ day_analytics.summary.total_records }}</h3>
+                <span class="stat-subtext">{{ day_analytics.summary.total_completed }} Completed / {{ day_analytics.summary.total_active }} Active</span>
+            </div>
+        </div>
+        <div class="glass-card stat-card stat-warning">
+            <div class="stat-icon-wrap">
+                <i data-lucide="clock"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Total Work Hours</span>
+                <h3 class="stat-value">{{ day_analytics.summary.total_hours }} <small class="text-sm">hrs</small></h3>
+                <span class="stat-subtext">Sum of recorded session hours</span>
+            </div>
+        </div>
+        <div class="glass-card stat-card stat-info">
+            <div class="stat-icon-wrap">
+                <i data-lucide="calendar"></i>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Days Plotted</span>
+                <h3 class="stat-value">{{ day_analytics.dates | length }}</h3>
+                <span class="stat-subtext">Day-by-day analysis window</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 1: Day-by-Day Attendance Analysis Charts -->
+    <div class="charts-row mt-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <!-- Chart 1: Day-by-Day Headcount & Status Trend -->
+        <div class="glass-card chart-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="trending-up" class="icon-accent"></i>
+                    <h4>Day-by-Day Employee Attendance Count</h4>
+                </div>
+                <button class="btn btn-xs btn-secondary" onclick="resetDayChart()">Reset Zoom</button>
+            </div>
+            <div class="chart-container" style="position: relative; height: 280px; width: 100%;">
+                <canvas id="dayByDayCountChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Chart 2: Day-by-Day Work Hours Breakdown -->
+        <div class="glass-card chart-card">
+            <div class="card-header">
+                <div class="card-header-left">
+                    <i data-lucide="bar-chart-2" class="icon-accent"></i>
+                    <h4>Day-by-Day Total & Average Work Hours</h4>
+                </div>
+                <button class="btn btn-xs btn-secondary" onclick="resetHoursChart()">Reset Zoom</button>
+            </div>
+            <div class="chart-container" style="position: relative; height: 280px; width: 100%;">
+                <canvas id="dayByDayHoursChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 2: Pass-Through AI & Zone Occupancy Analytics -->
+    <div class="glass-card machine-analytics-section mt-2">
+        <div class="card-header">
+            <div class="card-header-left">
+                <i data-lucide="cpu" class="icon-accent"></i>
+                <h4>Pass-Through & AI Analytics Summary</h4>
+            </div>
+            <span class="badge-pill badge-primary">Real-Time AI Feed</span>
+        </div>
+
+        <div class="machine-stats-grid">
+            <div class="glass-card mini-stat stat-primary">
+                <span class="stat-label">Passed Camera</span>
+                <h3 class="stat-value" id="m-stat-passed">{{ machine_analytics.total_passed_today }}</h3>
+                <span class="stat-subtext">People detected today</span>
+            </div>
+            <div class="glass-card mini-stat stat-warning">
+                <span class="stat-label">Longer Dwell</span>
+                <h3 class="stat-value" id="m-stat-high-dwell">{{ machine_analytics.high_dwell_count }}</h3>
+                <span class="stat-subtext">Stayed over 5 seconds</span>
+            </div>
+            <div class="glass-card mini-stat stat-success">
+                <span class="stat-label">Average Dwell</span>
+                <h3 class="stat-value" id="m-stat-avg-dwell">{{ machine_analytics.avg_dwell_sec }}s</h3>
+                <span class="stat-subtext">Average presence time</span>
+            </div>
+            <div class="glass-card mini-stat stat-info">
+                <span class="stat-label">Peak Traffic Hour</span>
+                <h4 class="stat-value" id="m-stat-peak-hour">{{ machine_analytics.peak_hour }}</h4>
+                <span class="stat-subtext">Highest crowd traffic</span>
+            </div>
+            <div class="glass-card mini-stat">
+                <span class="stat-label">Quiet Hour</span>
+                <h4 class="stat-value" id="m-stat-low-hour">{{ machine_analytics.low_hour }}</h4>
+                <span class="stat-subtext">Lowest crowd traffic</span>
+            </div>
+        </div>
+
+        <div class="analytics-charts-grid mt-3">
+            <!-- Hourly Zone Occupancy Bar Chart -->
+            <div class="glass-card chart-panel" style="grid-column: 1 / -1;">
+                <div class="card-header-left" style="justify-content: space-between; margin-bottom: 0.8rem; flex-wrap: wrap;">
+                    <h5 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="bar-chart-3" class="text-info"></i>
+                        People In Marked Detection Zone Over Time (Hourly Bar Plot)
+                    </h5>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="badge-pill badge-outline" id="marked-chart-subtitle">🔲 Zone: Not Set</span>
+                        <button class="btn btn-xs btn-secondary" onclick="resetMarkedZoneChart()" title="Reset Chart">
+                            <i data-lucide="rotate-ccw"></i>
+                            <span>Reset Graph</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="chart-canvas-wrap" style="height: 260px; position: relative;">
+                    <canvas id="markedLocationBarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Hourly Foot Traffic -->
+            <div class="glass-card chart-panel">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+                    <h5 style="margin: 0; display: flex; align-items: center; gap: 0.4rem;">
+                        <i data-lucide="bar-chart-2"></i>
+                        Hourly Foot Traffic
+                    </h5>
+                    <button class="btn btn-xs btn-secondary" onclick="resetHourlyTrafficChart()" title="Reset Chart">
+                        <i data-lucide="rotate-ccw"></i>
+                        <span>Reset Graph</span>
+                    </button>
+                </div>
+                <div class="chart-canvas-wrap">
+                    <canvas id="hourlyTrafficChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Top Apparel & Shirt Colors -->
+            <div class="glass-card chart-panel">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+                    <h5 style="margin: 0; display: flex; align-items: center; gap: 0.4rem;">
+                        <i data-lucide="palette"></i>
+                        Top Apparel & Shirt Colors
+                    </h5>
+                    <button class="btn btn-xs btn-secondary" onclick="resetApparelChart()" title="Reset Chart">
+                        <i data-lucide="rotate-ccw"></i>
+                        <span>Reset Graph</span>
+                    </button>
+                </div>
+                <div class="chart-canvas-wrap">
+                    <canvas id="apparelColorChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    function toggleTodayFilter() {
+        const todayInput = document.getElementById('today_input');
+        const form = document.getElementById('analytics-filter-form');
+        if (todayInput.value === 'true') {
+            todayInput.value = 'false';
+        } else {
+            todayInput.value = 'true';
+        }
+        form.submit();
+    }
+
+    // Chart Data Passed from Backend
+    const dayDates = {{ day_analytics.dates | tojson }};
+    const dayTotalPresent = {{ day_analytics.total_present | tojson }};
+    const dayCompleted = {{ day_analytics.completed_counts | tojson }};
+    const dayActive = {{ day_analytics.active_counts | tojson }};
+    const daySumHours = {{ day_analytics.sum_hours | tojson }};
+    const dayAvgHours = {{ day_analytics.avg_hours | tojson }};
+
+    const hourlyLabels = {{ machine_analytics.hourly_chart_labels | tojson }};
+    const hourlyData = {{ machine_analytics.hourly_chart_data | tojson }};
+    const colorLabels = {{ machine_analytics.color_labels | tojson }};
+    const colorCounts = {{ machine_analytics.color_counts | tojson }};
+
+    let countChartInstance = null;
+    let hoursChartInstance = null;
+    let markedZoneChartInstance = null;
+    let hourlyTrafficChartInstance = null;
+    let apparelChartInstance = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Chart 1: Day-by-Day Headcount Bar Chart
+        const ctxCount = document.getElementById('dayByDayCountChart').getContext('2d');
+        countChartInstance = new Chart(ctxCount, {
+            type: 'bar',
+            data: {
+                labels: dayDates.length > 0 ? dayDates : ['No Data'],
+                datasets: [
+                    {
+                        label: 'Total Present',
+                        data: dayTotalPresent.length > 0 ? dayTotalPresent : [0],
+                        backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Work Completed (Out)',
+                        data: dayCompleted.length > 0 ? dayCompleted : [0],
+                        backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                        borderColor: '#10b981',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Currently Active',
+                        data: dayActive.length > 0 ? dayActive : [0],
+                        backgroundColor: 'rgba(245, 158, 11, 0.75)',
+                        borderColor: '#f59e0b',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', labels: { color: '#94a3b8', font: { size: 11 } } }
+                },
+                scales: {
+                    x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                    y: { ticks: { color: '#94a3b8', font: { size: 10 }, precision: 0 }, grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true }
+                }
+            }
+        });
+
+        // Chart 2: Day-by-Day Work Hours Line Chart
+        const ctxHours = document.getElementById('dayByDayHoursChart').getContext('2d');
+        hoursChartInstance = new Chart(ctxHours, {
+            type: 'line',
+            data: {
+                labels: dayDates.length > 0 ? dayDates : ['No Data'],
+                datasets: [
+                    {
+                        label: 'Total Hours (All Staff)',
+                        data: daySumHours.length > 0 ? daySumHours : [0],
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#8b5cf6'
+                    },
+                    {
+                        label: 'Avg Hours / Staff',
+                        data: dayAvgHours.length > 0 ? dayAvgHours : [0],
+                        borderColor: '#06b6d4',
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#06b6d4'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', labels: { color: '#94a3b8', font: { size: 11 } } }
+                },
+                scales: {
+                    x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                    y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true }
+                }
+            }
+        });
+
+        // Chart 3: Marked Location Detection Zone Bar Chart
+        const ctxMarked = document.getElementById('markedLocationBarChart').getContext('2d');
+        markedZoneChartInstance = new Chart(ctxMarked, {
+            type: 'bar',
+            data: {
+                labels: ['00:00','01:00','02:00','03:00','04:00','05:00','06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'],
+                datasets: [{
+                    label: 'People Dwells at Marked Location',
+                    data: new Array(24).fill(0),
+                    backgroundColor: 'rgba(20, 184, 166, 0.75)',
+                    borderColor: '#14b8a6',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', labels: { color: '#94a3b8', font: { size: 11 } } } },
+                scales: {
+                    x: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                    y: { ticks: { color: '#94a3b8', font: { size: 10 }, precision: 0 }, grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true }
+                }
+            }
+        });
+
+        // Chart 4: Hourly Foot Traffic
+        const ctxHourly = document.getElementById('hourlyTrafficChart').getContext('2d');
+        hourlyTrafficChartInstance = new Chart(ctxHourly, {
+            type: 'bar',
+            data: {
+                labels: hourlyLabels,
+                datasets: [{
+                    label: 'Passes',
+                    data: hourlyData,
+                    backgroundColor: 'rgba(139, 92, 246, 0.75)',
+                    borderColor: '#8b5cf6',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { display: false } },
+                    y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true }
+                }
+            }
+        });
+
+        // Chart 5: Top Apparel Colors Pie Chart
+        const ctxApparel = document.getElementById('apparelColorChart').getContext('2d');
+        const colorPalette = {
+            'Blue': '#3b82f6', 'Gray': '#64748b', 'Purple': '#a855f7',
+            'Green': '#22c55e', 'Orange': '#f97316', 'Black': '#1e293b',
+            'White': '#f8fafc', 'Red': '#ef4444', 'Yellow': '#eab308'
+        };
+        const bgColors = colorLabels.map(c => colorPalette[c] || '#3b82f6');
+        apparelChartInstance = new Chart(ctxApparel, {
+            type: 'doughnut',
+            data: {
+                labels: colorLabels,
+                datasets: [{
+                    data: colorCounts,
+                    backgroundColor: bgColors,
+                    borderWidth: 2,
+                    borderColor: '#1e293b'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 11 } } }
+                }
+            }
+        });
+
+        // Fetch live marked location zone statistics
+        fetchMarkedLocationStats();
+    });
+
+    async function fetchMarkedLocationStats() {
+        try {
+            const res = await fetch('/api/camera/marked_location_stats');
+            const data = await res.json();
+            if (data.success && data.stats) {
+                const sub = document.getElementById('marked-chart-subtitle');
+                if (sub) {
+                    if (data.stats.has_location) {
+                        sub.textContent = `📍 Location: ${data.stats.norm_x.toFixed(2)}, ${data.stats.norm_y.toFixed(2)}`;
+                    } else {
+                        sub.textContent = `🔲 Zone: Not Set`;
+                    }
+                }
+                if (markedZoneChartInstance && data.stats.hourly_counts) {
+                    markedZoneChartInstance.data.datasets[0].data = data.stats.hourly_counts;
+                    markedZoneChartInstance.update();
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch zone stats:', e);
+        }
+    }
+
+    function resetDayChart() { if (countChartInstance) countChartInstance.resetZoom(); }
+    function resetHoursChart() { if (hoursChartInstance) hoursChartInstance.resetZoom(); }
+    function resetMarkedZoneChart() { if (markedZoneChartInstance) markedZoneChartInstance.resetZoom(); }
+    function resetHourlyTrafficChart() { if (hourlyTrafficChartInstance) hourlyTrafficChartInstance.resetZoom(); }
+    function resetApparelChart() { if (apparelChartInstance) apparelChartInstance.resetZoom(); }
+</script>
+{% endblock %}
