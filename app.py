@@ -2,7 +2,7 @@ import os
 import io
 import base64
 import time
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from functools import wraps
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -22,7 +22,7 @@ from database import (
     get_all_attendance_records, get_recent_punch_logs,
     get_admin_dashboard_stats, get_camera_settings,
     update_camera_settings, process_gesture_punch,
-    get_machine_analytics_summary
+    get_machine_analytics_summary, get_day_by_day_analytics
 )
 from face_engine import face_engine
 from camera_stream import camera_stream, CameraStreamManager
@@ -156,12 +156,22 @@ def admin_employees():
 @app.route('/admin/attendance')
 @admin_required
 def admin_attendance():
-    start_date = request.args.get('start_date', date.today().strftime('%Y-%m-%d'))
-    end_date = request.args.get('end_date', date.today().strftime('%Y-%m-%d'))
+    today_filter = request.args.get('today', 'false').lower() == 'true'
+    today_str = date.today().strftime('%Y-%m-%d')
+    
+    if today_filter:
+        start_date = today_str
+        end_date = today_str
+    else:
+        start_date = request.args.get('start_date', (date.today() - timedelta(days=7)).strftime('%Y-%m-%d'))
+        end_date = request.args.get('end_date', today_str)
+        
     department = request.args.get('department', 'All')
     records = get_all_attendance_records(start_date=start_date, end_date=end_date, department=department)
     employees = get_all_employees()
     departments = sorted(list(set(e.get('department', 'General') for e in employees if e.get('department'))))
+    
+    day_analytics = get_day_by_day_analytics(start_date=start_date, end_date=end_date, department=department)
     
     return render_template(
         'admin_attendance.html',
@@ -170,8 +180,27 @@ def admin_attendance():
         end_date=end_date,
         department=department,
         departments=departments,
+        today_filter=today_filter,
+        day_analytics=day_analytics,
         active_page='attendance'
     )
+
+@app.route('/api/analytics/day_by_day')
+@admin_required
+def api_day_by_day_analytics():
+    today_only = request.args.get('today', 'false').lower() == 'true'
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    department = request.args.get('department', 'All')
+    
+    analytics = get_day_by_day_analytics(
+        start_date=start_date,
+        end_date=end_date,
+        department=department,
+        today_only=today_only
+    )
+    return jsonify({'success': True, 'data': analytics})
+
 
 @app.route('/admin/camera')
 @admin_required
@@ -591,15 +620,25 @@ def api_manual_punch():
 def api_mark_camera_location():
     try:
         data = request.get_json() or {}
-        x_norm = float(data.get('x_norm', 0.5))
-        y_norm = float(data.get('y_norm', 0.5))
         label = str(data.get('label', 'Marked Zone')).strip() or 'Marked Zone'
 
-        camera_stream.marked_location = (x_norm, y_norm, label)
+        if 'x_min' in data and 'y_min' in data and 'x_max' in data and 'y_max' in data:
+            x_min = float(data.get('x_min'))
+            y_min = float(data.get('y_min'))
+            x_max = float(data.get('x_max'))
+            y_max = float(data.get('y_max'))
+            camera_stream.marked_location = (x_min, y_min, x_max, y_max, label)
+            loc_data = {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max, 'label': label, 'is_box': True}
+        else:
+            x_norm = float(data.get('x_norm', 0.5))
+            y_norm = float(data.get('y_norm', 0.5))
+            camera_stream.marked_location = (x_norm, y_norm, label)
+            loc_data = {'x_norm': x_norm, 'y_norm': y_norm, 'label': label, 'is_box': False}
+
         return jsonify({
             'success': True,
-            'message': f'Location "{label}" marked successfully.',
-            'marked_location': {'x_norm': x_norm, 'y_norm': y_norm, 'label': label}
+            'message': f'Location zone "{label}" marked successfully.',
+            'marked_location': loc_data
         })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -631,6 +670,37 @@ def api_reset_heatmap():
     try:
         camera_stream.heatmap_grid = np.zeros((48, 64), dtype=np.float32)
         return jsonify({'success': True, 'message': 'Spatial heatmap density reset.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/analytics/reset_graph', methods=['POST'])
+@admin_required
+def api_reset_graph():
+    try:
+        data = request.get_json(silent=True) or {}
+        target = data.get('target', 'all')
+        conn = get_db_connection()
+        today_str = date.today().strftime('%Y-%m-%d')
+
+        if target == 'marked_zone':
+            camera_stream.marked_location_hourly_counts = {f"{h:02d}:00": 0 for h in range(24)}
+            msg = "Marked Location Detection Zone graph reset."
+        elif target == 'hourly_traffic':
+            conn.execute("DELETE FROM machine_pass_events WHERE date = ?", (today_str,))
+            conn.commit()
+            msg = "Hourly Foot Traffic graph & sensor counts reset."
+        elif target == 'apparel_colors':
+            conn.execute("UPDATE machine_pass_events SET top_dress_color = 'Unknown' WHERE date = ?", (today_str,))
+            conn.commit()
+            msg = "Apparel & Shirt Colors graph reset."
+        else:
+            camera_stream.marked_location_hourly_counts = {f"{h:02d}:00": 0 for h in range(24)}
+            conn.execute("DELETE FROM machine_pass_events WHERE date = ?", (today_str,))
+            conn.commit()
+            msg = "All analytics charts & pass data reset."
+
+        conn.close()
+        return jsonify({'success': True, 'message': msg, 'target': target})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 

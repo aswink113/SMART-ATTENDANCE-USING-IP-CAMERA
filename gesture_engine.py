@@ -143,7 +143,8 @@ class GestureEngine:
 
 def analyze_top_apparel_color(img_bgr, face_bbox=None):
     """
-    Analyzes upper torso region below detected face to classify top apparel/dress color.
+    Analyzes upper torso region below detected face to classify top apparel/dress color accurately.
+    Uses pixel-level HSV masking and dominant color histogramming to prevent background/skin bias.
     """
     if img_bgr is None:
         return "Unknown"
@@ -152,48 +153,62 @@ def analyze_top_apparel_color(img_bgr, face_bbox=None):
     
     if face_bbox is not None:
         fx, fy, fw, fh = face_bbox
-        # Define torso region below face
-        torso_y1 = min(h - 1, int(fy + fh * 1.1))
-        torso_y2 = min(h, int(fy + fh * 3.5))
-        torso_x1 = max(0, int(fx - fw * 0.3))
-        torso_x2 = min(w, int(fx + fw * 1.3))
+        # Torso crop region: below chin (fy + 1.1*fh) down to upper chest/waist (fy + 3.8*fh)
+        torso_y1 = min(h - 1, int(fy + fh * 1.15))
+        torso_y2 = min(h, int(fy + fh * 3.6))
+        torso_x1 = max(0, int(fx - fw * 0.25))
+        torso_x2 = min(w, int(fx + fw * 1.25))
         
-        if torso_y2 <= torso_y1 or torso_x2 <= torso_x1:
-            torso_crop = img_bgr[int(h*0.4):int(h*0.8), int(w*0.3):int(w*0.7)]
+        if torso_y2 <= torso_y1 + 10 or torso_x2 <= torso_x1 + 10:
+            torso_crop = img_bgr[int(h*0.4):int(h*0.75), int(w*0.3):int(w*0.7)]
         else:
             torso_crop = img_bgr[torso_y1:torso_y2, torso_x1:torso_x2]
     else:
-        torso_crop = img_bgr[int(h*0.4):int(h*0.8), int(w*0.3):int(w*0.7)]
+        torso_crop = img_bgr[int(h*0.4):int(h*0.75), int(w*0.3):int(w*0.7)]
 
-    if torso_crop is None or torso_crop.size == 0:
+    if torso_crop is None or torso_crop.size < 100:
         return "Unknown"
 
     hsv = cv2.cvtColor(torso_crop, cv2.COLOR_BGR2HSV)
     h_channel, s_channel, v_channel = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
     
-    mean_s = np.mean(s_channel)
-    mean_v = np.mean(v_channel)
-    mean_h = np.mean(h_channel)
+    # Filter out skin tones (Skin H: 0-25 & 165-180, S: 25-160, V: 60-255)
+    skin_mask1 = (h_channel >= 0) & (h_channel <= 25) & (s_channel >= 25) & (s_channel <= 160)
+    skin_mask2 = (h_channel >= 165) & (h_channel <= 180) & (s_channel >= 25) & (s_channel <= 160)
+    non_skin_mask = ~(skin_mask1 | skin_mask2)
 
-    if mean_v < 50:
+    valid_h = h_channel[non_skin_mask]
+    valid_s = s_channel[non_skin_mask]
+    valid_v = v_channel[non_skin_mask]
+
+    if len(valid_v) == 0:
+        valid_h, valid_s, valid_v = h_channel.flatten(), s_channel.flatten(), v_channel.flatten()
+
+    median_v = np.median(valid_v)
+    median_s = np.median(valid_s)
+    median_h = np.median(valid_h)
+
+    # 1. Achromatic Checks (Black, White, Gray)
+    if median_v < 45:
         return "Black"
-    elif mean_v > 200 and mean_s < 40:
+    if median_v > 215 and median_s < 25:
         return "White"
-    elif mean_s < 40:
+    # Strict Gray check (must be truly low saturation and neutral brightness)
+    if median_s < 20 and 45 <= median_v <= 215:
         return "Gray"
 
-    # Color ranges based on Hue (0 - 180 in OpenCV)
-    if mean_h < 10 or mean_h > 170:
+    # 2. Chromatic Hue-based Classification
+    if (median_h < 10) or (median_h >= 165):
         return "Red"
-    elif 10 <= mean_h < 25:
+    elif 10 <= median_h < 25:
         return "Orange"
-    elif 25 <= mean_h < 35:
+    elif 25 <= median_h < 38:
         return "Yellow"
-    elif 35 <= mean_h < 85:
+    elif 38 <= median_h < 85:
         return "Green"
-    elif 85 <= mean_h < 130:
+    elif 85 <= median_h < 135:
         return "Blue"
-    elif 130 <= mean_h < 170:
+    elif 135 <= median_h < 165:
         return "Purple"
 
     return "Blue"

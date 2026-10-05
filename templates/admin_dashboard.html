@@ -5,7 +5,7 @@
 
 {% block content %}
 <div class="dashboard-grid">
-    <!-- Row 1: KPI Stat Cards -->
+    <!-- Row 1: Key Performance Metrics -->
     <div class="stats-cards-grid">
         <div class="glass-card stat-card stat-primary">
             <div class="stat-icon-wrap">
@@ -14,7 +14,7 @@
             <div class="stat-content">
                 <span class="stat-label">Total Employees</span>
                 <h3 class="stat-value" id="stat-total">{{ stats.total_employees }}</h3>
-                <span class="stat-subtext">Registered in system</span>
+                <span class="stat-subtext">Registered Staff</span>
             </div>
         </div>
 
@@ -36,7 +36,7 @@
             <div class="stat-content">
                 <span class="stat-label">Currently In Office</span>
                 <h3 class="stat-value" id="stat-in">{{ stats.currently_in }}</h3>
-                <span class="stat-subtext">Active IN sessions</span>
+                <span class="stat-subtext">Active IN Sessions</span>
             </div>
         </div>
 
@@ -47,39 +47,39 @@
             <div class="stat-content">
                 <span class="stat-label">Punched Out</span>
                 <h3 class="stat-value" id="stat-out">{{ stats.punched_out }}</h3>
-                <span class="stat-subtext">Completed work day</span>
+                <span class="stat-subtext">Completed Workday</span>
             </div>
         </div>
     </div>
 
-    <!-- Row 2: Live Video Stream & Real-Time Punch Ticker -->
+    <!-- Row 2: Live Stream & Real-Time Punch Feed -->
     <div class="monitor-feed-section">
-        <!-- Live Camera Stream Card -->
+        <!-- Live Camera Feed Card -->
         <div class="glass-card stream-card">
             <div class="card-header">
                 <div class="card-header-left">
                     <div class="live-tag">
                         <span class="live-dot"></span>
-                        <span>LIVE STREAM</span>
+                        <span>LIVE CAMERA</span>
                     </div>
-                    <h4>AI Video Feed (Face Recognition & Hand Gesture)</h4>
+                    <h4>AI Vision Feed & Real-Time Zone Monitor</h4>
                 </div>
                 <div class="card-header-right">
-                    <!-- Browser WebCam Toggle Button -->
-                    <button class="btn btn-sm btn-accent" id="btn-browser-cam" onclick="toggleBrowserWebcamStream()" title="Stream camera from this browser device">
+                    <!-- Quick Toolbar -->
+                    <button class="btn btn-sm btn-accent" id="btn-browser-cam" onclick="toggleBrowserWebcamStream()" title="Stream camera directly from this browser">
                         <i data-lucide="camera" id="browser-cam-icon"></i>
                         <span id="browser-cam-text">Use Browser Camera</span>
                     </button>
-                    <button class="btn btn-sm btn-info" onclick="promptMarkLocation()" title="Click to mark a location pin on video feed">
-                        <i data-lucide="map-pin"></i>
-                        <span>Mark Location</span>
+                    <button class="btn btn-sm btn-info" onclick="promptMarkLocation()" title="Set a Square Detection Zone on the stream">
+                        <i data-lucide="square"></i>
+                        <span>Set Square Zone</span>
                     </button>
-                    <button class="btn btn-sm btn-warning" id="btn-toggle-heatmap" onclick="toggleHeatmapDisplay()" title="Turn full body spatial heatmap ON / OFF">
+                    <button class="btn btn-sm btn-warning" id="btn-toggle-heatmap" onclick="toggleHeatmapDisplay()" title="Toggle Heatmap Overlay">
                         <i data-lucide="eye" id="heatmap-toggle-icon"></i>
                         <span id="heatmap-toggle-text">Heatmap: ON</span>
                     </button>
-                    <button class="btn btn-sm btn-secondary" onclick="resetHeatmap()" title="Clear and reset spatial dwell heatmap">
-                        <i data-lucide="flame"></i>
+                    <button class="btn btn-sm btn-secondary" onclick="resetHeatmap()" title="Clear Heatmap Density">
+                        <i data-lucide="rotate-ccw"></i>
                         <span>Reset Heatmap</span>
                     </button>
                     <span class="badge-pill badge-outline" id="camera-fps-badge">FPS: --</span>
@@ -99,15 +99,15 @@
                 <video id="client-stream-video" autoplay playsinline muted style="display:none;"></video>
                 <canvas id="client-stream-canvas" style="display:none;"></canvas>
 
-                <!-- Overlay HUD instructions -->
+                <!-- Clean HUD Instruction Pill Overlay -->
                 <div class="stream-hud-overlay">
                     <div class="hud-item hud-gesture">
                         <i data-lucide="hand"></i>
-                        <span>Raise Hand To Punch IN / OUT</span>
+                        <span>Raise Hand To Punch</span>
                     </div>
                     <div class="hud-item hud-rule">
-                        <i data-lucide="crosshair"></i>
-                        <span>Click stream image to Mark Location Pin</span>
+                        <i data-lucide="square"></i>
+                        <span>Click stream image to mark Square Detection Zone</span>
                     </div>
                 </div>
             </div>
@@ -115,28 +115,27 @@
             <div class="stream-footer">
                 <div class="stream-info-pill">
                     <i data-lucide="map-pin" class="text-info"></i>
-                    <span id="marked-location-label">Marked Location: <strong>None (Click video image to mark pin)</strong></span>
+                    <span id="marked-location-label">Marked Location: <strong>None (Click video to mark zone box)</strong></span>
                 </div>
                 <div class="stream-actions">
                     <button class="btn btn-sm btn-secondary" onclick="promptMarkLocation()">
-                        <i data-lucide="crosshair"></i>
-                        <span>Set Target Zone</span>
+                        <i data-lucide="square"></i>
+                        <span>Set Square Zone</span>
                     </button>
                     <a href="{{ url_for('admin_camera') }}" class="btn btn-sm btn-secondary">
                         <i data-lucide="settings"></i>
-                        <span>Configure Camera / RTSP</span>
+                        <span>Camera Settings</span>
                     </a>
                 </div>
             </div>
 
-            <!-- Helpful notice for camera privacy or physical shutter -->
             <div class="camera-hint-banner mt-2">
                 <i data-lucide="info"></i>
-                <span>Tip: If your camera displays a gray lock screen, make sure your laptop's <strong>physical camera shutter is open</strong> and Windows Camera Privacy is allowed, or click <strong>"Use Browser Camera"</strong> above!</span>
+                <span>Tip: Click <strong>"Use Browser Camera"</strong> above to stream directly from your laptop/webcam, or set RTSP in Camera Settings!</span>
             </div>
         </div>
 
-        <!-- Real-Time Activity Feed Card -->
+        <!-- Recent Activity Feed -->
         <div class="glass-card activity-card">
             <div class="card-header">
                 <div class="card-header-left">
@@ -192,7 +191,7 @@
         </div>
     </div>
 
-    <!-- Row 3: Today's Detailed Attendance Log -->
+    <!-- Row 3: Today's Detailed Master Attendance Log -->
     <div class="glass-card table-card">
         <div class="card-header">
             <div class="card-header-left">
@@ -202,7 +201,7 @@
             <div class="card-header-right">
                 <div class="search-box-sm" style="display: flex; align-items: center; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 10px; padding: 4px 10px; gap: 6px;">
                     <i data-lucide="search" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
-                    <input type="text" id="attendance-search-input" placeholder="Filter employee or dept..." onkeyup="filterTodayTable()" style="background: none; border: none; color: #fff; font-size: 0.82rem; outline: none; width: 170px;">
+                    <input type="text" id="attendance-search-input" placeholder="Search employee or dept..." onkeyup="filterTodayTable()" style="background: none; border: none; color: #fff; font-size: 0.82rem; outline: none; width: 170px;">
                 </div>
                 <a href="{{ url_for('api_export_excel') }}" class="btn btn-sm btn-success">
                     <i data-lucide="file-spreadsheet"></i>
@@ -263,7 +262,7 @@
                                 </td>
                                 <td>
                                     {% if r.status == 'COMPLETED' %}
-                                        <span class="badge-status badge-success">Completed (Out)</span>
+                                        <span class="badge-status badge-success">Completed</span>
                                     {% elif r.status == 'IN_PROGRESS' %}
                                         <span class="badge-status badge-warning">In Office</span>
                                     {% else %}
@@ -294,72 +293,91 @@
         </div>
     </div>
 
+    <!-- Row 4: Machine Pass-Through Analytics & Charts -->
     <div class="glass-card machine-analytics-section">
         <div class="card-header">
             <div class="card-header-left">
                 <i data-lucide="cpu" class="icon-accent"></i>
-                <h4>Machine Camera Pass-Through & Detailed Analytics</h4>
+                <h4>Pass-Through & AI Analytics Summary</h4>
             </div>
-            <span class="badge-pill badge-primary">Real-Time Sensor & AI Feed</span>
+            <span class="badge-pill badge-primary">Real-Time AI Feed</span>
         </div>
 
         <div class="machine-stats-grid">
             <div class="glass-card mini-stat stat-primary">
-                <span class="stat-label">Passed the camera</span>
+                <span class="stat-label">Passed Camera</span>
                 <h3 class="stat-value" id="m-stat-passed">{{ machine_analytics.total_passed_today }}</h3>
                 <span class="stat-subtext">People detected today</span>
             </div>
             <div class="glass-card mini-stat stat-warning">
-                <span class="stat-label">Longer dwell</span>
+                <span class="stat-label">Longer Dwell</span>
                 <h3 class="stat-value" id="m-stat-high-dwell">{{ machine_analytics.high_dwell_count }}</h3>
-                <span class="stat-subtext">Stayed in frame over 5 seconds</span>
+                <span class="stat-subtext">Stayed over 5 seconds</span>
             </div>
             <div class="glass-card mini-stat stat-success">
-                <span class="stat-label">Average dwell</span>
+                <span class="stat-label">Average Dwell</span>
                 <h3 class="stat-value" id="m-stat-avg-dwell">{{ machine_analytics.avg_dwell_sec }}s</h3>
-                <span class="stat-subtext">Average presence duration</span>
+                <span class="stat-subtext">Average presence time</span>
             </div>
             <div class="glass-card mini-stat stat-info">
-                <span class="stat-label">Peak hour</span>
+                <span class="stat-label">Peak Traffic Hour</span>
                 <h4 class="stat-value" id="m-stat-peak-hour">{{ machine_analytics.peak_hour }}</h4>
                 <span class="stat-subtext">Highest crowd traffic</span>
             </div>
             <div class="glass-card mini-stat">
-                <span class="stat-label">Quiet hour</span>
+                <span class="stat-label">Quiet Hour</span>
                 <h4 class="stat-value" id="m-stat-low-hour">{{ machine_analytics.low_hour }}</h4>
                 <span class="stat-subtext">Lowest crowd traffic</span>
             </div>
         </div>
 
         <div class="analytics-charts-grid mt-3">
-            <!-- 1. Custom Marked Location Occupancy Bar Plot -->
+            <!-- Square Detection Zone Hourly Occupancy Bar Plot -->
             <div class="glass-card chart-panel" style="grid-column: 1 / -1;">
-                <div class="card-header-left" style="justify-content: space-between; margin-bottom: 0.8rem;">
+                <div class="card-header-left" style="justify-content: space-between; margin-bottom: 0.8rem; flex-wrap: wrap;">
                     <h5 style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
                         <i data-lucide="bar-chart-3" class="text-info"></i>
-                        People At Marked Location Over Time (Hourly Bar Plot)
+                        People In Marked Detection Zone Over Time (Hourly Bar Plot)
                     </h5>
-                    <span class="badge-pill badge-outline" id="marked-chart-subtitle">📍 Location: Not Set</span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="badge-pill badge-outline" id="marked-chart-subtitle">🔲 Zone: Not Set</span>
+                        <button class="btn btn-xs btn-secondary" onclick="resetSingleGraph('marked_zone')" title="Reset Marked Zone Chart">
+                            <i data-lucide="rotate-ccw"></i>
+                            <span>Reset Graph</span>
+                        </button>
+                    </div>
                 </div>
-                <div class="chart-canvas-wrap" style="height: 280px; position: relative;">
+                <div class="chart-canvas-wrap" style="height: 260px; position: relative;">
                     <canvas id="markedLocationBarChart"></canvas>
                 </div>
             </div>
 
             <div class="glass-card chart-panel">
-                <h5>
-                    <i data-lucide="bar-chart-2"></i>
-                    Hourly traffic
-                </h5>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+                    <h5 style="margin: 0; display: flex; align-items: center; gap: 0.4rem;">
+                        <i data-lucide="bar-chart-2"></i>
+                        Hourly Foot Traffic
+                    </h5>
+                    <button class="btn btn-xs btn-secondary" onclick="resetSingleGraph('hourly_traffic')" title="Reset Hourly Foot Traffic Chart">
+                        <i data-lucide="rotate-ccw"></i>
+                        <span>Reset Graph</span>
+                    </button>
+                </div>
                 <div class="chart-canvas-wrap">
                     <canvas id="hourlyTrafficChart"></canvas>
                 </div>
             </div>
             <div class="glass-card chart-panel">
-                <h5>
-                    <i data-lucide="palette"></i>
-                    Apparel colors
-                </h5>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem;">
+                    <h5 style="margin: 0; display: flex; align-items: center; gap: 0.4rem;">
+                        <i data-lucide="palette"></i>
+                        Top Apparel & Shirt Colors
+                    </h5>
+                    <button class="btn btn-xs btn-secondary" onclick="resetSingleGraph('apparel_colors')" title="Reset Apparel Colors Chart">
+                        <i data-lucide="rotate-ccw"></i>
+                        <span>Reset Graph</span>
+                    </button>
+                </div>
                 <div class="chart-canvas-wrap">
                     <canvas id="apparelColorChart"></canvas>
                 </div>
@@ -515,6 +533,35 @@
 
     // ---------------- Mark Custom Target Location Handlers ----------------
     let markedLocationChart = null;
+    let isDrawingZoneBox = false;
+    let zoneStartCoords = null;
+
+    async function setMarkedLocationBox(x_min, y_min, x_max, y_max, labelName) {
+        try {
+            const res = await fetch('/api/camera/mark_location', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x_min: x_min, y_min: y_min, x_max: x_max, y_max: y_max, label: labelName })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const labelEl = document.getElementById('marked-location-label');
+                if (labelEl) {
+                    labelEl.innerHTML = `Marked Zone: <strong>🔲 ${data.marked_location.label}</strong> (Square Box Area)`;
+                }
+                const subEl = document.getElementById('marked-chart-subtitle');
+                if (subEl) {
+                    subEl.innerText = `🔲 Zone: ${data.marked_location.label}`;
+                }
+                showToast('🔲 Square location zone set: ' + data.marked_location.label, 'success');
+                updateMarkedLocationChart();
+            } else {
+                alert('Failed to mark zone: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Mark location error:', err);
+        }
+    }
 
     async function setMarkedLocation(x_norm, y_norm, labelName) {
         try {
@@ -552,16 +599,57 @@
         const x_norm = Math.max(0.02, Math.min(0.98, clickX / rect.width));
         const y_norm = Math.max(0.02, Math.min(0.98, clickY / rect.height));
 
-        const zoneName = prompt('Enter a label for this marked location (e.g. Counter A, Main Gate, Entrance):', 'Marked Zone 1');
-        if (zoneName && zoneName.trim()) {
-            setMarkedLocation(x_norm, y_norm, zoneName.trim());
+        const mode = confirm("Create a Square/Rectangular Detection Zone box around this position?\n\n- Click 'OK' to set a Square Zone Box.\n- Click 'Cancel' for a Pin Point.");
+        
+        if (mode) {
+            // Default square zone around click position (20% width & height)
+            const box_half_w = 0.12;
+            const box_half_h = 0.14;
+            const x_min = Math.max(0.01, x_norm - box_half_w);
+            const y_min = Math.max(0.01, y_norm - box_half_h);
+            const x_max = Math.min(0.99, x_norm + box_half_w);
+            const y_max = Math.min(0.99, y_norm + box_half_h);
+
+            const zoneName = prompt('Enter a label for this Square Detection Zone (e.g. Counter A, Main Gate, Escalator):', 'Marked Zone 1');
+            if (zoneName && zoneName.trim()) {
+                setMarkedLocationBox(x_min, y_min, x_max, y_max, zoneName.trim());
+            }
+        } else {
+            const zoneName = prompt('Enter a label for this Pin Point location:', 'Marked Point 1');
+            if (zoneName && zoneName.trim()) {
+                setMarkedLocation(x_norm, y_norm, zoneName.trim());
+            }
         }
     }
 
     function promptMarkLocation() {
-        const zoneName = prompt('Enter label for new target location zone:', 'Counter A');
+        const zoneName = prompt('Enter label for new Square Detection Zone:', 'Counter A');
         if (zoneName && zoneName.trim()) {
-            setMarkedLocation(0.5, 0.5, zoneName.trim());
+            setMarkedLocationBox(0.35, 0.30, 0.65, 0.70, zoneName.trim());
+        }
+    }
+
+    async function resetSingleGraph(targetName) {
+        try {
+            const res = await fetch('/api/analytics/reset_graph', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target: targetName })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('🔄 ' + data.message, 'info');
+                if (targetName === 'marked_zone' || targetName === 'all') {
+                    updateMarkedLocationChart();
+                }
+                if (targetName === 'hourly_traffic' || targetName === 'apparel_colors' || targetName === 'all') {
+                    setTimeout(() => window.location.reload(), 400);
+                }
+            } else {
+                alert('Failed to reset graph: ' + data.message);
+            }
+        } catch (err) {
+            console.error('Reset graph error:', err);
         }
     }
 

@@ -645,14 +645,30 @@ class CameraStreamManager:
                             self.heatmap_grid[dy, dx] += 0.02
 
                     # Check proximity to user custom marked location
+                    person_cx_norm = (fx + fw / 2.0) / float(w)
+                    person_cy_norm = (fy + fh * 0.5) / float(h) # Center of face/upper body
+                    body_bottom_norm = min(1.0, (fy + fh * 3.5) / float(h))
+                    body_left_norm = max(0.0, (fx - fw * 0.5) / float(w))
+                    body_right_norm = min(1.0, (fx + fw * 1.5) / float(w))
+
                     if self.marked_location:
-                        mx_norm, my_norm, _ = self.marked_location
-                        # Proximity radius check (approx 18% normalized distance)
-                        dist = np.hypot(person_cx_norm - mx_norm, person_cy_norm - my_norm)
-                        if dist <= 0.18:
-                            current_hour = datetime.now().strftime('%H:00')
-                            if current_hour in self.marked_location_hourly_counts:
-                                self.marked_location_hourly_counts[current_hour] += 1
+                        if len(self.marked_location) == 5:
+                            # Box zone: x_min, y_min, x_max, y_max, label
+                            zx1, zy1, zx2, zy2, _ = self.marked_location
+                            # Person is inside zone if body bounding region overlaps zone bounding box
+                            overlap_x = (body_left_norm <= zx2) and (body_right_norm >= zx1)
+                            overlap_y = ((fy / float(h)) <= zy2) and (body_bottom_norm >= zy1)
+                            if overlap_x and overlap_y:
+                                current_hour = datetime.now().strftime('%H:00')
+                                if current_hour in self.marked_location_hourly_counts:
+                                    self.marked_location_hourly_counts[current_hour] += 1
+                        elif len(self.marked_location) == 3:
+                            mx_norm, my_norm, _ = self.marked_location
+                            dist = np.hypot(person_cx_norm - mx_norm, person_cy_norm - my_norm)
+                            if dist <= 0.25:
+                                current_hour = datetime.now().strftime('%H:00')
+                                if current_hour in self.marked_location_hourly_counts:
+                                    self.marked_location_hourly_counts[current_hour] += 1
 
                     recognized_faces.append({
                         'emp_id': emp_id,
@@ -739,21 +755,38 @@ class CameraStreamManager:
             cv2.rectangle(annotated, (tx - 6, ty - th - 6), (tx + tw + 6, ty + 6), (0, 0, 255), 1)
             cv2.putText(annotated, tag_text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 255), 2)
 
-        # Draw User Custom Marked Location Target Pin if set
+        # Draw User Custom Marked Location Target Pin or Zone Bounding Box
         if self.marked_location:
-            mx_norm, my_norm, m_label = self.marked_location
-            m_px = int(mx_norm * w)
-            m_py = int(my_norm * h)
-            # Neon Cyan Pin Marker
-            cv2.circle(annotated, (m_px, m_py), 12, (255, 255, 0), -1)
-            cv2.circle(annotated, (m_px, m_py), 20, (255, 255, 0), 2)
-            cv2.drawMarker(annotated, (m_px, m_py), (0, 0, 0), cv2.MARKER_CROSS, 12, 2)
-            lbl = f"📍 {m_label}"
-            (lw, lh), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 2)
-            lx = max(10, min(w - lw - 10, m_px - int(lw / 2)))
-            ly = max(40, m_py - 24)
-            cv2.rectangle(annotated, (lx - 4, ly - lh - 4), (lx + lw + 4, ly + 4), (6, 182, 212), -1)
-            cv2.putText(annotated, lbl, (lx, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2)
+            if len(self.marked_location) == 5:
+                zx1_n, zy1_n, zx2_n, zy2_n, m_label = self.marked_location
+                px1, py1 = int(zx1_n * w), int(zy1_n * h)
+                px2, py2 = int(zx2_n * w), int(zy2_n * h)
+                
+                # Draw neon cyan rectangular zone box with transparent fill
+                zone_overlay = annotated.copy()
+                cv2.rectangle(zone_overlay, (px1, py1), (px2, py2), (255, 255, 0), -1)
+                cv2.addWeighted(zone_overlay, 0.20, annotated, 0.80, 0, annotated)
+                cv2.rectangle(annotated, (px1, py1), (px2, py2), (255, 255, 0), 2)
+                
+                lbl = f"🔲 Zone: {m_label}"
+                (lw, lh), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 2)
+                lx = max(10, px1)
+                ly = max(25, py1 - 8)
+                cv2.rectangle(annotated, (lx - 2, ly - lh - 4), (lx + lw + 4, ly + 4), (6, 182, 212), -1)
+                cv2.putText(annotated, lbl, (lx, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2)
+            elif len(self.marked_location) == 3:
+                mx_norm, my_norm, m_label = self.marked_location
+                m_px = int(mx_norm * w)
+                m_py = int(my_norm * h)
+                cv2.circle(annotated, (m_px, m_py), 12, (255, 255, 0), -1)
+                cv2.circle(annotated, (m_px, m_py), 20, (255, 255, 0), 2)
+                cv2.drawMarker(annotated, (m_px, m_py), (0, 0, 0), cv2.MARKER_CROSS, 12, 2)
+                lbl = f"📍 {m_label}"
+                (lw, lh), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 2)
+                lx = max(10, min(w - lw - 10, m_px - int(lw / 2)))
+                ly = max(40, m_py - 24)
+                cv2.rectangle(annotated, (lx - 4, ly - lh - 4), (lx + lw + 4, ly + 4), (6, 182, 212), -1)
+                cv2.putText(annotated, lbl, (lx, ly), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 2)
 
         with self.lock:
             detections = self.latest_detections.copy()

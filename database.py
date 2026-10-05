@@ -638,6 +638,86 @@ def get_admin_dashboard_stats():
         'department_stats': dept_stats
     }
 
+def get_day_by_day_analytics(start_date=None, end_date=None, department=None, today_only=False):
+    conn = get_db_connection()
+    today_str = date.today().strftime('%Y-%m-%d')
+    
+    if today_only:
+        start_date = today_str
+        end_date = today_str
+    
+    # Filter conditions for SQL
+    where_clauses = []
+    params = []
+    
+    if start_date:
+        where_clauses.append("a.date >= ?")
+        params.append(start_date)
+    if end_date:
+        where_clauses.append("a.date <= ?")
+        params.append(end_date)
+    if department and department != 'All':
+        where_clauses.append("e.department = ?")
+        params.append(department)
+        
+    where_str = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+    
+    # Aggregated Day-by-Day counts
+    query = f'''
+        SELECT 
+            a.date,
+            COUNT(DISTINCT a.emp_id) as total_present,
+            SUM(CASE WHEN a.status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
+            SUM(CASE WHEN a.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as active_count,
+            ROUND(SUM(IFNULL(a.total_hours, 0)), 1) as sum_hours,
+            ROUND(AVG(IFNULL(a.total_hours, 0)), 1) as avg_hours
+        FROM attendance a
+        LEFT JOIN employees e ON a.emp_id = e.emp_id
+        {where_str}
+        GROUP BY a.date
+        ORDER BY a.date ASC
+    '''
+    rows = conn.execute(query, params).fetchall()
+    
+    # Overall summary counts for the selected filter context
+    summary_query = f'''
+        SELECT 
+            COUNT(DISTINCT a.emp_id) as unique_employees,
+            COUNT(a.id) as total_records,
+            SUM(CASE WHEN a.status = 'COMPLETED' THEN 1 ELSE 0 END) as total_completed,
+            SUM(CASE WHEN a.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as total_active,
+            ROUND(SUM(IFNULL(a.total_hours, 0)), 1) as total_hours
+        FROM attendance a
+        LEFT JOIN employees e ON a.emp_id = e.emp_id
+        {where_str}
+    '''
+    summary = conn.execute(summary_query, params).fetchone()
+    conn.close()
+    
+    dates = [r['date'] for r in rows]
+    total_present = [r['total_present'] for r in rows]
+    completed_counts = [r['completed_count'] for r in rows]
+    active_counts = [r['active_count'] for r in rows]
+    sum_hours = [r['sum_hours'] for r in rows]
+    avg_hours = [r['avg_hours'] for r in rows]
+    
+    return {
+        'dates': dates,
+        'total_present': total_present,
+        'completed_counts': completed_counts,
+        'active_counts': active_counts,
+        'sum_hours': sum_hours,
+        'avg_hours': avg_hours,
+        'summary': dict(summary) if summary else {
+            'unique_employees': 0,
+            'total_records': 0,
+            'total_completed': 0,
+            'total_active': 0,
+            'total_hours': 0.0
+        }
+    }
+
+
 # ----------------- Camera Settings -----------------
 
 def get_camera_settings():
